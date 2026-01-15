@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+:root {
+  --bg: 255 255 255;        /* white */
+  --text: 15 23 42;         /* slate-900 */
+  --muted: 100 116 139;     /* slate-500 */
+  --line: 226 232 240;      /* slate-200 */
+  --card: 255 255 255;      /* white */
+  --brand: 37 99 235;       /* blue-600 */
+  --brand2: 56 189 248;     /* sky-400 */
+}
+
+html, body { height: 100%; }
+
+body {
+  color: rgb(var(--text));
+  background:
+    radial-gradient(900px 500px at 15% 0%, rgba(var(--brand2), .18), transparent 60%),
+    radial-gradient(900px 500px at 85% 10%, rgba(var(--brand), .12), transparent 55%),
+    linear-gradient(180deg, rgb(var(--bg)) 0%, rgb(var(--bg)) 100%);
+}
+
+/* ✅ These were in your layout but not defined anywhere */
+@layer utilities {
+  .bg-canvas {
+    background:
+      radial-gradient(900px 500px at 15% 0%, rgba(var(--brand2), .18), transparent 60%),
+      radial-gradient(900px 500px at 85% 10%, rgba(var(--brand), .12), transparent 55%),
+      linear-gradient(180deg, rgb(var(--bg)) 0%, rgb(var(--bg)) 100%);
+  }
+
+  .bg-grain {
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(2, 6, 23, 0.03),
+        rgba(2, 6, 23, 0.03) 1px,
+        transparent 1px,
+        transparent 2px
+      );
+    mix-blend-mode: multiply;
+    opacity: 0.35;
+    pointer-events: none;
+  }
+}
