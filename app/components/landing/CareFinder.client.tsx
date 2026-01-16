@@ -8,7 +8,7 @@ import { cn, MapPin, MiniTag } from "./ui";
 
 export default function CareFinder() {
   const [query, setQuery] = useState("");
-  const [location, setLocation] = useState("New York, NY");
+  const [location, setLocation] = useState("London, UK");
   const [type, setType] = useState<"Express" | "Primary" | "Specialty">("Express");
 
   const suggestions = useMemo(() => {
