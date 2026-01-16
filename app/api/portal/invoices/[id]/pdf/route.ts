@@ -1,30 +1,23 @@
 // app/api/portal/invoices/[id]/pdf/route.ts
 //
-// ✅ Designed invoice PDF (HTML → PDF via headless Chromium)
-// ✅ TS-safe: uses native `Response` (NOT `new NextResponse(...)`)
-// ✅ TS-safe: wraps Puppeteer PDF output in `Buffer.from(...)`
-// ✅ Falls back to your lightweight placeholder PDF if Chromium/Puppeteer fails
-//
-// Install (recommended):
-//   npm i puppeteer-core @sparticuz/chromium
+// Designed invoice PDF (HTML -> PDF via headless Chromium)
+// Falls back to lightweight placeholder PDF if Chromium/Puppeteer fails
 
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
-import { createEvermoreApi } from "../../../../../libs/Api";
+import {
+  joinUpstream,
+  getUpstreamBase,
+  noStoreHeaders,
+  SESSION_COOKIE_NAME,
+} from "../../../../../libs/upstream";
+import { logAndMapError } from "../../../../../libs/errorMapper";
 
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs"; // Buffer/pdf generation needs Node runtime
-
-function noStoreHeaders() {
-  return {
-    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-    Pragma: "no-cache",
-    Expires: "0",
-  } as Record<string, string>;
-}
 
 /* ---------------------------------- */
 /* Fallback placeholder PDF (always works) */
@@ -224,7 +217,7 @@ function invoiceHtml(opts: {
       )}" />`
     : `<div class="brandDot" aria-hidden="true"></div>`;
 
-  const address = (branding.addressLines ?? []).filter(Boolean).join(" • ");
+  const address = (branding.addressLines ?? []).filter(Boolean).join(" - ");
 
   const supportEmail = branding.supportEmail ? escapeHtml(branding.supportEmail) : "";
   const supportPhone = branding.supportPhone ? escapeHtml(branding.supportPhone) : "";
@@ -249,52 +242,34 @@ function invoiceHtml(opts: {
         <td class="right">${escapeHtml(it.qty)}</td>
         <td class="right">${escapeHtml(fmtMoney(currency, it.unitPrice))}</td>
         <td class="right">${escapeHtml(fmtMoney(currency, it.amount))}</td>
-      </tr>
-    `
+      </tr>`
           )
           .join("")
-      : `
-      <tr>
-        <td>
-          <div class="desc">Services</div>
-          <div class="code">—</div>
-        </td>
-        <td class="right">1</td>
-        <td class="right">${escapeHtml(fmtMoney(currency, totals.total))}</td>
-        <td class="right">${escapeHtml(fmtMoney(currency, totals.total))}</td>
-      </tr>
-    `;
+      : `<tr><td colspan="4" style="text-align:center;color:#888;">No line items</td></tr>`;
 
-  return `<!doctype html>
+  return `<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
   <style>
-    :root { --accent: ${accent}; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      margin: 0;
-      padding: 28px;
-      color: #0b1220;
-      background: #ffffff;
-    }
-    .card { border: 1px solid #e6e8ee; border-radius: 18px; padding: 22px; }
-    .top { display: flex; justify-content: space-between; gap: 18px; padding-bottom: 14px; border-bottom: 1px solid #eef0f4; }
-    .brand { display: flex; gap: 12px; align-items: center; }
-    .brandDot { width: 44px; height: 44px; border-radius: 14px; background: var(--accent); }
-    .logo { width: 44px; height: 44px; border-radius: 14px; object-fit: cover; }
-    .brandName { font-weight: 900; font-size: 16px; letter-spacing: -.01em; }
-    .muted { color: #667085; font-size: 12px; line-height: 1.35; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f7fa; padding: 24px; }
+    .card { background: #fff; border-radius: 18px; max-width: 640px; margin: 0 auto; padding: 28px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+    .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brandDot { width: 36px; height: 36px; border-radius: 50%; background: ${accent}; }
+    .logo { width: 36px; height: 36px; object-fit: contain; }
+    .brandName { font-weight: 900; font-size: 15px; color: #0b1220; }
+    .muted { color: #667085; font-size: 12px; }
     .invTitle { text-align: right; }
-    .invTitle .label { color: #667085; font-size: 12px; }
-    .invTitle .no { font-size: 22px; font-weight: 900; margin-top: 2px; letter-spacing: -.02em; }
-    .pill { display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; border: 1px solid rgba(0,0,0,.10); margin-top: 8px; }
-    .pill.paid { background: rgba(34,197,94,.12); color: #137a3a; border-color: rgba(34,197,94,.22); }
-    .pill.issued { background: rgba(59,130,246,.10); color: #1d4ed8; border-color: rgba(59,130,246,.18); }
-    .pill.overdue { background: rgba(244,63,94,.10); color: #be123c; border-color: rgba(244,63,94,.18); }
-    .meta { display: flex; justify-content: space-between; gap: 18px; margin-top: 14px; }
-    .box { border: 1px solid #eef0f4; border-radius: 14px; padding: 12px; flex: 1; }
+    .invTitle .label { font-size: 12px; color: #667085; }
+    .invTitle .no { font-weight: 1000; font-size: 18px; color: #0b1220; }
+    .pill { display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .pill.paid { background: #d1fae5; color: #047857; }
+    .pill.overdue { background: #fee2e2; color: #b91c1c; }
+    .pill.issued { background: #e0e7ff; color: #4338ca; }
+    .meta { display: flex; gap: 16px; margin-top: 20px; flex-wrap: wrap; }
+    .box { flex: 1; min-width: 200px; background: #fafbff; border: 1px solid #eef0f4; border-radius: 14px; padding: 12px; }
     .box .row { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; }
     .box .k { color: #667085; font-size: 12px; }
     .box .v { font-weight: 900; font-size: 12.5px; }
@@ -389,14 +364,15 @@ function invoiceHtml(opts: {
 /* ---------------------------------- */
 /* Invoice fetch helpers */
 /* ---------------------------------- */
-async function tryFetchInvoiceFromBackend(baseUrl: string, token: string, id: string) {
+async function tryFetchInvoiceFromBackend(token: string, id: string) {
   const candidates = [
-    `${baseUrl}/api/patient/invoices/${encodeURIComponent(id)}`,
-    `${baseUrl}/api/patient/invoice/${encodeURIComponent(id)}`,
+    `/api/patient/invoices/${encodeURIComponent(id)}`,
+    `/api/patient/invoice/${encodeURIComponent(id)}`,
   ];
 
-  for (const url of candidates) {
+  for (const path of candidates) {
     try {
+      const url = joinUpstream(path);
       const res = await fetch(url, {
         method: "GET",
         headers: {
@@ -427,7 +403,7 @@ function makeFallbackLines(id: string, invoice: any | null) {
   const paidAt = invoice?.paidAt ?? invoice?.paid_at ?? null;
 
   return [
-    "Evermore Hospitals — Invoice",
+    "Evermore Hospitals - Invoice",
     "",
     `Invoice ID: ${String(id)}`,
     `Invoice No: ${String(invoiceNo)}`,
@@ -448,33 +424,40 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params; // ✅ Next 16 expects params as Promise
-  const token = (await cookies()).get("evermore_token")?.value;
-
-  const baseUrl = process.env.EVERMORE_API_URL || "http://localhost:8080";
-
-  const backend = createEvermoreApi({
-    baseUrl,
-    apiPrefix: "/api",
-  });
+  const { id } = await params;
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE_NAME)?.value;
 
   let invoice: any | null = null;
 
   try {
     if (token) {
       // 1) Try direct invoice endpoint (if available)
-      invoice = (await tryFetchInvoiceFromBackend(baseUrl, token, id)) ?? null;
+      invoice = await tryFetchInvoiceFromBackend(token, id);
 
       // 2) Fallback: dashboard invoices list
       if (!invoice) {
-        const dash = await backend.patient.dashboard(token);
-        const invoices: any[] = Array.isArray(dash?.invoices) ? dash.invoices : [];
-        invoice =
-          invoices.find((inv) => String(inv?._id ?? inv?.id ?? "") === String(id)) ??
-          null;
+        const dashUrl = joinUpstream("/api/patient/dashboard");
+        const dashRes = await fetch(dashUrl, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        });
+
+        if (dashRes.ok) {
+          const dash = await dashRes.json();
+          const invoices: any[] = Array.isArray(dash?.invoices) ? dash.invoices : [];
+          invoice =
+            invoices.find((inv) => String(inv?._id ?? inv?.id ?? "") === String(id)) ??
+            null;
+        }
       }
     }
-  } catch {
+  } catch (err) {
+    logAndMapError("portal/invoices/pdf", err);
     invoice = null;
   }
 
@@ -487,10 +470,9 @@ export async function GET(
     supportEmail: "billing@evermore.health",
     supportPhone: "+44 20 0000 0000",
     footerNote: "Payment due within 30 days. Keep this receipt for your records.",
-    // logoUrl: "https://your-cdn/evermore-logo.png",
   };
 
-  // ✅ Try designed PDF first
+  // Try designed PDF first
   try {
     const html = invoiceHtml({ invoice: invoice ?? {}, id, branding });
 
@@ -501,7 +483,7 @@ export async function GET(
     const browser = await puppeteer.launch({
       args: chromium.args,
       executablePath,
-      headless: true, // ✅ don't use chromium.headless (typing mismatch)
+      headless: true,
     });
 
     try {
@@ -514,7 +496,6 @@ export async function GET(
         margin: { top: "16mm", right: "14mm", bottom: "16mm", left: "14mm" },
       });
 
-      // ✅ TS-safe body
       const body = Buffer.from(pdfBytes);
 
       return new Response(body, {
@@ -530,8 +511,10 @@ export async function GET(
     } finally {
       await browser.close();
     }
-  } catch {
-    // ✅ Always-working fallback placeholder PDF
+  } catch (err) {
+    logAndMapError("portal/invoices/pdf/puppeteer", err);
+
+    // Always-working fallback placeholder PDF
     const pdfBytes = buildSimplePdf(makeFallbackLines(id, invoice));
 
     return new Response(pdfBytes, {

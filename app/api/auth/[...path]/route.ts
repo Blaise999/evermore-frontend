@@ -1,96 +1,96 @@
 // app/api/auth/[...path]/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import {
+  getUpstreamBase,
+  noStoreHeaders,
+  cookieConfigWithMaxAge,
+  SESSION_COOKIE_NAME,
+} from "../../../libs/upstream";
+import { logAndMapError } from "../../../libs/errorMapper";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const COOKIE = "evermore_token";
-
-function noStoreHeaders() {
-  return {
-    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-    Pragma: "no-cache",
-    Expires: "0",
-  } as Record<string, string>;
-}
-
-function cookieOptions() {
-  const isProd = process.env.NODE_ENV === "production";
-  return {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: "lax" as const,
-    path: "/",
-  };
-}
 
 async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }) {
   const { path = [] } = await ctx.params;
   const seg0 = path[0] || "";
 
-  // ✅ local logout endpoint (backend doesn't need one)
+  // ✅ Local logout endpoint (backend doesn't need one)
   if (seg0 === "logout") {
-    (await cookies()).set(COOKIE, "", { ...cookieOptions(), maxAge: 0 });
+    const jar = await cookies();
+    jar.set(SESSION_COOKIE_NAME, "", { ...cookieConfigWithMaxAge(0), maxAge: 0 });
     return NextResponse.json({ ok: true }, { headers: noStoreHeaders() });
   }
 
-  const backendBase = process.env.EVERMORE_API_URL || "http://localhost:8080";
-  const url = new URL(req.url);
+  try {
+    // ✅ Use canonical upstream helper with new URL() for safe URL building
+    const backendBase = getUpstreamBase();
+    const incomingUrl = new URL(req.url);
 
-  const target = new URL(`${backendBase}/api/auth/${path.join("/")}`);
-  target.search = url.search;
+    // Build target URL safely using URL constructor
+    const target = new URL(`/api/auth/${path.join("/")}`, backendBase);
+    target.search = incomingUrl.search;
 
-  const method = req.method.toUpperCase();
-  const hasBody = !["GET", "HEAD"].includes(method);
+    const method = req.method.toUpperCase();
+    const hasBody = !["GET", "HEAD"].includes(method);
 
-  const token = (await cookies()).get(COOKIE)?.value;
+    const jar = await cookies();
+    const token = jar.get(SESSION_COOKIE_NAME)?.value;
 
-  const upstream = await fetch(target.toString(), {
-    method,
-    headers: {
-      ...(req.headers.get("content-type")
-        ? { "Content-Type": req.headers.get("content-type") as string }
-        : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: hasBody ? await req.text() : undefined,
-    cache: "no-store",
-  });
+    const upstream = await fetch(target.toString(), {
+      method,
+      headers: {
+        ...(req.headers.get("content-type")
+          ? { "Content-Type": req.headers.get("content-type") as string }
+          : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: hasBody ? await req.text() : undefined,
+      cache: "no-store",
+    });
 
-  const ct = upstream.headers.get("content-type") || "";
-  const text = await upstream.text();
+    const ct = upstream.headers.get("content-type") || "";
+    const text = await upstream.text();
 
-  // If JSON, we can set cookie on login/signup responses
-  if (ct.includes("application/json")) {
-    let data: any = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      return new NextResponse(text, {
+    // If JSON, we can set cookie on login/signup responses
+    if (ct.includes("application/json")) {
+      let data: any = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        return new NextResponse(text, {
+          status: upstream.status,
+          headers: { ...noStoreHeaders(), "Content-Type": ct || "application/json" },
+        });
+      }
+
+      // ✅ When backend returns token on login/signup -> store it in HttpOnly cookie
+      const isAuthTokenResponse =
+        (seg0 === "login" || seg0 === "signup") && data?.ok && typeof data?.token === "string";
+
+      if (isAuthTokenResponse) {
+        jar.set(SESSION_COOKIE_NAME, data.token, cookieConfigWithMaxAge());
+      }
+
+      return NextResponse.json(data, {
         status: upstream.status,
-        headers: { ...noStoreHeaders(), "Content-Type": ct || "application/json" },
+        headers: noStoreHeaders(),
       });
     }
 
-    // ✅ When backend returns token on login/signup -> store it in HttpOnly cookie
-    const isAuthTokenResponse =
-      (seg0 === "login" || seg0 === "signup") && data?.ok && typeof data?.token === "string";
-
-    if (isAuthTokenResponse) {
-      (await cookies()).set(COOKIE, data.token, cookieOptions());
-    }
-
-    return NextResponse.json(data, {
+    // Non-json passthrough
+    return new NextResponse(text, {
       status: upstream.status,
-      headers: noStoreHeaders(),
+      headers: { ...noStoreHeaders(), "Content-Type": ct || "text/plain" },
     });
+  } catch (err: any) {
+    const friendly = logAndMapError(`auth/${path.join("/")}`, err);
+    return NextResponse.json(
+      { ok: false, message: friendly.message },
+      { status: 500, headers: noStoreHeaders() }
+    );
   }
-
-  // Non-json passthrough
-  return new NextResponse(text, {
-    status: upstream.status,
-    headers: { ...noStoreHeaders(), "Content-Type": ct || "text/plain" },
-  });
 }
 
 export async function GET(req: Request, ctx: any) {

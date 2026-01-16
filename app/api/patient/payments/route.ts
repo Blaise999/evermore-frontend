@@ -1,14 +1,70 @@
+// app/api/patient/payments/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-// NOTE: This file lives under app/api/**/route.ts in your Next app.
-// Use a relative import that works regardless of tsconfig path aliases.
-import { api } from "../../../libs/Api";
+import {
+  joinUpstream,
+  noStoreHeaders,
+  SESSION_COOKIE_NAME,
+} from "../../../libs/upstream";
+import { logAndMapError } from "../../../libs/errorMapper";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const token = (await cookies()).get("evermore_token")?.value;
-  if (!token) return NextResponse.json({ ok: false, message: "Unauthorized" }, { status: 401 });
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE_NAME)?.value;
 
-  const body = await req.json(); // { amount, currency?, method?, invoiceId? }
-  const data = await api.patient.createPaymentRequest(token, body);
-  return NextResponse.json(data);
+  if (!token) {
+    return NextResponse.json(
+      { ok: false, message: "Not signed in." },
+      { status: 401, headers: noStoreHeaders() }
+    );
+  }
+
+  try {
+    const body = await req.json();
+
+    // ✅ Use canonical upstream helper with new URL() for safe URL building
+    const upstreamUrl = joinUpstream("/api/patient/payments");
+
+    const upstream = await fetch(upstreamUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+
+    const text = await upstream.text();
+    let data: any = null;
+
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      console.error("[patient/payments] Backend returned non-JSON:", text.slice(0, 200));
+      return NextResponse.json(
+        { ok: false, message: "Something went wrong. Try again." },
+        { status: 500, headers: noStoreHeaders() }
+      );
+    }
+
+    if (!upstream.ok) {
+      const friendly = logAndMapError("patient/payments", { status: upstream.status, ...data });
+      return NextResponse.json(
+        { ok: false, message: friendly.message },
+        { status: upstream.status, headers: noStoreHeaders() }
+      );
+    }
+
+    return NextResponse.json(data, { headers: noStoreHeaders() });
+  } catch (err: any) {
+    const friendly = logAndMapError("patient/payments", err);
+    return NextResponse.json(
+      { ok: false, message: friendly.message },
+      { status: 500, headers: noStoreHeaders() }
+    );
+  }
 }

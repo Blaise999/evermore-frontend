@@ -1,30 +1,69 @@
+// app/api/session/verify-email/route.ts
+// ✅ FIXED: Was using undefined process.env.BACKEND_URL causing "ENOTFOUND https"
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import {
+  joinUpstream,
+  noStoreHeaders,
+  cookieConfigWithMaxAge,
+  SESSION_COOKIE_NAME,
+} from "../../../libs/upstream";
+import { logAndMapError } from "../../../libs/errorMapper";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const { token } = await req.json().catch(() => ({}));
-  if (!token) return NextResponse.json({ ok: false, message: "token required" }, { status: 400 });
+  try {
+    const body = await req.json().catch(() => ({}));
+    const token = body?.token;
 
-  // proxy to your Express backend verify endpoint
-  const r = await fetch(`${process.env.BACKEND_URL}/api/auth/verify-email`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token }),
-  });
+    if (!token) {
+      return NextResponse.json(
+        { ok: false, message: "Verification token is required." },
+        { status: 400, headers: noStoreHeaders() }
+      );
+    }
 
-  const data = await r.json().catch(() => ({}));
+    // ✅ Use canonical upstream helper with new URL() for safe URL building
+    // This was the bug: was using `${process.env.BACKEND_URL}/api/auth/verify-email`
+    // When BACKEND_URL was undefined, it became "undefined/api/auth/verify-email"
+    const upstreamUrl = joinUpstream("/api/auth/verify-email");
 
-  // if verify succeeded AND backend returned a session token, set cookie
-  const res = NextResponse.json(data, { status: r.status });
-
-  if (r.ok && data?.ok && data?.token) {
-    res.cookies.set("evermore_token", String(data.token), {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
+    const upstream = await fetch(upstreamUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+      cache: "no-store",
     });
-  }
 
-  return res;
+    const text = await upstream.text();
+    let data: any = null;
+
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      console.error("[session/verify-email] Backend returned non-JSON:", text.slice(0, 200));
+      data = {};
+    }
+
+    const res = NextResponse.json(data, {
+      status: upstream.status,
+      headers: noStoreHeaders(),
+    });
+
+    // If verify succeeded AND backend returned a session token, set cookie
+    if (upstream.ok && data?.ok && data?.token) {
+      const jar = await cookies();
+      jar.set(SESSION_COOKIE_NAME, String(data.token), cookieConfigWithMaxAge());
+    }
+
+    return res;
+  } catch (err: any) {
+    const friendly = logAndMapError("session/verify-email", err);
+    return NextResponse.json(
+      { ok: false, message: friendly.message },
+      { status: 500, headers: noStoreHeaders() }
+    );
+  }
 }

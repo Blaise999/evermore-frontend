@@ -1,62 +1,72 @@
 // app/api/admin/[...path]/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import {
+  getUpstreamBase,
+  noStoreHeaders,
+  SESSION_COOKIE_NAME,
+} from "../../../libs/upstream";
+import { logAndMapError } from "../../../libs/errorMapper";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function noStoreHeaders() {
-  return {
-    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-    Pragma: "no-cache",
-    Expires: "0",
-  } as Record<string, string>;
-}
-
 async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }) {
-  const token = (await cookies()).get("evermore_token")?.value;
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE_NAME)?.value;
+
   if (!token) {
     return NextResponse.json(
-      { ok: false, message: "Unauthorized" },
+      { ok: false, message: "Not signed in." },
       { status: 401, headers: noStoreHeaders() }
     );
   }
 
   const { path = [] } = await ctx.params;
 
-  const backendBase = process.env.EVERMORE_API_URL || "http://localhost:8080";
-  const url = new URL(req.url);
+  try {
+    // ✅ Use canonical upstream helper with new URL() for safe URL building
+    const backendBase = getUpstreamBase();
+    const incomingUrl = new URL(req.url);
 
-  // Forward to Express backend: http://localhost:8080/api/admin/...
-  const target = new URL(`${backendBase}/api/admin/${path.join("/")}`);
-  target.search = url.search;
+    // Build target URL safely using URL constructor
+    const target = new URL(`/api/admin/${path.join("/")}`, backendBase);
+    target.search = incomingUrl.search;
 
-  const method = req.method.toUpperCase();
-  const hasBody = !["GET", "HEAD"].includes(method);
+    const method = req.method.toUpperCase();
+    const hasBody = !["GET", "HEAD"].includes(method);
 
-  const upstream = await fetch(target.toString(), {
-    method,
-    headers: {
-      // pass auth to backend
-      Authorization: `Bearer ${token}`,
-      // forward content-type if present
-      ...(req.headers.get("content-type")
-        ? { "Content-Type": req.headers.get("content-type") as string }
-        : {}),
-    },
-    body: hasBody ? await req.text() : undefined,
-    cache: "no-store",
-  });
+    const upstream = await fetch(target.toString(), {
+      method,
+      headers: {
+        // Pass auth to backend
+        Authorization: `Bearer ${token}`,
+        // Forward content-type if present
+        ...(req.headers.get("content-type")
+          ? { "Content-Type": req.headers.get("content-type") as string }
+          : {}),
+      },
+      body: hasBody ? await req.text() : undefined,
+      cache: "no-store",
+    });
 
-  const contentType = upstream.headers.get("content-type") || "application/json";
-  const text = await upstream.text();
+    const contentType = upstream.headers.get("content-type") || "application/json";
+    const text = await upstream.text();
 
-  return new NextResponse(text, {
-    status: upstream.status,
-    headers: {
-      ...noStoreHeaders(),
-      "Content-Type": contentType,
-    },
-  });
+    return new NextResponse(text, {
+      status: upstream.status,
+      headers: {
+        ...noStoreHeaders(),
+        "Content-Type": contentType,
+      },
+    });
+  } catch (err: any) {
+    const friendly = logAndMapError(`admin/${path.join("/")}`, err);
+    return NextResponse.json(
+      { ok: false, message: friendly.message },
+      { status: 500, headers: noStoreHeaders() }
+    );
+  }
 }
 
 export async function GET(req: Request, ctx: any) {

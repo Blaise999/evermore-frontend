@@ -1,6 +1,15 @@
+// app/api/portal/appointments/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createEvermoreApi } from "../../../libs/Api";
+import {
+  joinUpstream,
+  noStoreHeaders,
+  SESSION_COOKIE_NAME,
+} from "../../../libs/upstream";
+import { logAndMapError } from "../../../libs/errorMapper";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type ApptStatus = "Confirmed" | "Completed" | "Cancelled";
 type PatientAppointment = {
@@ -21,25 +30,68 @@ function mapApptStatus(s: string): ApptStatus {
 }
 
 export async function GET() {
-  const token = (await cookies()).get("evermore_token")?.value;
-  if (!token) return NextResponse.json({ ok: false, message: "Not authenticated" }, { status: 401 });
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE_NAME)?.value;
 
-  const backendBase = process.env.EVERMORE_API_URL || "http://localhost:8080";
-  const backend = createEvermoreApi({ baseUrl: backendBase, apiPrefix: "/api" });
+  if (!token) {
+    return NextResponse.json(
+      { ok: false, message: "Not signed in." },
+      { status: 401, headers: noStoreHeaders() }
+    );
+  }
 
-  const dash = await backend.patient.dashboard(token);
+  try {
+    // Use canonical upstream helper with new URL() for safe URL building
+    const upstreamUrl = joinUpstream("/api/patient/dashboard");
 
-  const appointments: PatientAppointment[] = (dash.appointments || []).map((a: any) => ({
-    id: String(a._id || a.id),
-    dept: a.department || "General",
-    clinician: a.doctorName || "Care team",
-    facility: "Evermore Hospitals",
-    startISO: a.scheduledAt || a.createdAt || new Date().toISOString(),
-    status: mapApptStatus(a.status),
-    prepChecklist: Array.isArray(a.data?.prepChecklist)
-      ? a.data.prepChecklist.map(String)
-      : ["Bring ID", "Arrive 15 minutes early"],
-  }));
+    const upstream = await fetch(upstreamUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
 
-  return NextResponse.json({ data: appointments });
+    const text = await upstream.text();
+    let dash: any = null;
+
+    try {
+      dash = text ? JSON.parse(text) : null;
+    } catch {
+      console.error("[portal/appointments] Backend returned non-JSON:", text.slice(0, 200));
+      return NextResponse.json(
+        { ok: false, message: "Something went wrong. Try again." },
+        { status: 500, headers: noStoreHeaders() }
+      );
+    }
+
+    if (!upstream.ok) {
+      const friendly = logAndMapError("portal/appointments", { status: upstream.status, ...dash });
+      return NextResponse.json(
+        { ok: false, message: friendly.message },
+        { status: upstream.status, headers: noStoreHeaders() }
+      );
+    }
+
+    const appointments: PatientAppointment[] = (dash.appointments || []).map((a: any) => ({
+      id: String(a._id || a.id),
+      dept: a.department || "General",
+      clinician: a.doctorName || "Care team",
+      facility: "Evermore Hospitals",
+      startISO: a.scheduledAt || a.createdAt || new Date().toISOString(),
+      status: mapApptStatus(a.status),
+      prepChecklist: Array.isArray(a.data?.prepChecklist)
+        ? a.data.prepChecklist.map(String)
+        : ["Bring ID", "Arrive 15 minutes early"],
+    }));
+
+    return NextResponse.json({ data: appointments }, { headers: noStoreHeaders() });
+  } catch (err: any) {
+    const friendly = logAndMapError("portal/appointments", err);
+    return NextResponse.json(
+      { ok: false, message: friendly.message },
+      { status: 500, headers: noStoreHeaders() }
+    );
+  }
 }

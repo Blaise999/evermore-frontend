@@ -1,63 +1,89 @@
+// app/api/portal/dashboard/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createEvermoreApi } from "../../../libs/Api"; // ✅ if your file is actually /libs/api.ts, change to "../../../libs/api"
+import {
+  joinUpstream,
+  noStoreHeaders,
+  SESSION_COOKIE_NAME,
+} from "../../../libs/upstream";
+import { logAndMapError } from "../../../libs/errorMapper";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function noStoreHeaders() {
-  return {
-    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-    Pragma: "no-cache",
-    Expires: "0",
-  } as Record<string, string>;
-}
-
 export async function GET() {
-  const token = (await cookies()).get("evermore_token")?.value;
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE_NAME)?.value;
+
   if (!token) {
     return NextResponse.json(
-      { ok: false, message: "Unauthorized" },
+      { ok: false, message: "Not signed in." },
       { status: 401, headers: noStoreHeaders() }
     );
   }
 
-  const backend = createEvermoreApi({
-    baseUrl: process.env.EVERMORE_API_URL || "http://localhost:8080",
-    apiPrefix: "/api",
-  });
-
-  // Canonical dashboard payload from Express (Mongo-backed).
-  let dash: any = null;
   try {
-    dash = await backend.patient.dashboard(token);
-  } catch (e: any) {
+    // Use canonical upstream helper with new URL() for safe URL building
+    const upstreamUrl = joinUpstream("/api/patient/dashboard");
+
+    const upstream = await fetch(upstreamUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+
+    const text = await upstream.text();
+    let dash: any = null;
+
+    try {
+      dash = text ? JSON.parse(text) : null;
+    } catch {
+      console.error("[portal/dashboard] Backend returned non-JSON:", text.slice(0, 200));
+      return NextResponse.json(
+        { ok: false, message: "Something went wrong. Try again." },
+        { status: 500, headers: noStoreHeaders() }
+      );
+    }
+
+    if (!upstream.ok) {
+      const friendly = logAndMapError("portal/dashboard", { status: upstream.status, ...dash });
+      return NextResponse.json(
+        { ok: false, message: friendly.message },
+        { status: upstream.status, headers: noStoreHeaders() }
+      );
+    }
+
+    // Ensure we only spread a real object
+    const dashObj: Record<string, any> =
+      dash && typeof dash === "object" && !Array.isArray(dash) ? dash : {};
+
+    // Convenience: build a pending map for the UI
+    const pendingRefByInvoiceId: Record<string, string> = {};
+
+    const payments = Array.isArray(dashObj?.payments) ? dashObj.payments : [];
+    for (const p of payments) {
+      const st = String(p?.status ?? "").toLowerCase();
+      const invoiceId = p?.invoiceId ?? p?.invoice_id ?? null;
+      const ref = p?.reference ?? p?.requestRef ?? p?.ref ?? null;
+
+      if (st === "pending" && invoiceId && ref) {
+        pendingRefByInvoiceId[String(invoiceId)] = String(ref);
+      }
+    }
+
+    // Return the backend payload as-is (the UI normalizes flexibly), plus pending map
     return NextResponse.json(
-      { ok: false, message: e?.message || "Failed to load dashboard." },
+      { ok: true, ...dashObj, pendingRefByInvoiceId },
+      { headers: noStoreHeaders() }
+    );
+  } catch (err: any) {
+    const friendly = logAndMapError("portal/dashboard", err);
+    return NextResponse.json(
+      { ok: false, message: friendly.message },
       { status: 500, headers: noStoreHeaders() }
     );
   }
-
-  // ✅ ensure we only spread a real object
-  const dashObj: Record<string, any> =
-    dash && typeof dash === "object" && !Array.isArray(dash) ? (dash as Record<string, any>) : {};
-
-  // Convenience: build a pending map for the UI.
-  const pendingRefByInvoiceId: Record<string, string> = {};
-
-  const payments = Array.isArray(dashObj?.payments) ? dashObj.payments : [];
-  for (const p of payments) {
-    const st = String(p?.status ?? "").toLowerCase();
-    const invoiceId = p?.invoiceId ?? p?.invoice_id ?? null;
-    const ref = p?.reference ?? p?.requestRef ?? p?.ref ?? null;
-
-    if (st === "pending" && invoiceId && ref) {
-      pendingRefByInvoiceId[String(invoiceId)] = String(ref);
-    }
-  }
-
-  // Return the backend payload as-is (the UI normalizes flexibly), plus pending map.
-  return NextResponse.json(
-    { ok: true, ...dashObj, pendingRefByInvoiceId },
-    { headers: noStoreHeaders() }
-  );
 }

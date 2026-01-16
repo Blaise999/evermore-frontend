@@ -1,6 +1,8 @@
 // libs/errorMapper.ts
 // Evermore Hospitals — Shared Error Mapper
 // Maps API errors and network issues to user-friendly messages
+// ✅ Hides all technical details from users
+// ✅ Logs technical details server-side only
 
 export type UserFriendlyError = {
   message: string;
@@ -289,6 +291,7 @@ function isNetworkError(err: unknown): boolean {
   
   const errorMessage = String((err as any)?.message || "").toLowerCase();
   const errorName = String((err as any)?.name || "").toLowerCase();
+  const errorCause = String((err as any)?.cause || "").toLowerCase();
   
   const networkIndicators = [
     "network",
@@ -304,6 +307,7 @@ function isNetworkError(err: unknown): boolean {
     "econnrefused",
     "econnreset",
     "enotfound",
+    "getaddrinfo",
     "dns",
     "socket",
     "connection",
@@ -313,11 +317,17 @@ function isNetworkError(err: unknown): boolean {
     "err_connection",
     "err_timed_out",
     "err_name_not_resolved",
+    "certificate",
+    "ssl",
+    "tls",
+    "epipe",
+    "ehostunreach",
+    "enetunreach",
   ];
   
-  return networkIndicators.some(
-    (indicator) => errorMessage.includes(indicator) || errorName.includes(indicator)
-  );
+  const combined = `${errorMessage} ${errorName} ${errorCause}`;
+  
+  return networkIndicators.some((indicator) => combined.includes(indicator));
 }
 
 /**
@@ -394,6 +404,28 @@ export function requiresSignIn(err: unknown): boolean {
 export function isRetryable(err: unknown): boolean {
   const friendly = mapError(err);
   return friendly.action === "retry";
+}
+
+/**
+ * Server-side error logging helper.
+ * Logs full technical details while returning user-friendly message.
+ * 
+ * @param context - Where the error occurred (e.g., "login", "fetch dashboard")
+ * @param err - The error object
+ * @returns User-friendly error message
+ */
+export function logAndMapError(context: string, err: unknown): UserFriendlyError {
+  // Log full technical details server-side
+  console.error(`[${context}] Error:`, {
+    message: (err as any)?.message,
+    code: (err as any)?.code,
+    status: (err as any)?.status,
+    cause: (err as any)?.cause,
+    stack: (err as any)?.stack?.split("\n").slice(0, 5).join("\n"),
+  });
+  
+  // Return user-friendly message
+  return mapError(err);
 }
 
 // Re-export for convenience

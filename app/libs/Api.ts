@@ -1,7 +1,7 @@
 // libs/Api.ts
 // Evermore Hospitals — Frontend API client (TypeScript)
-// ✅ Fixes CORS once: Browser calls SAME-ORIGIN (/api/...), Server calls backend (:8080)
-// ✅ Supports "no localStorage": browser sends HttpOnly cookies via credentials:"include"
+// Client-side: calls SAME-ORIGIN (/api/...) - no CORS issues
+// Server-side: uses canonical upstream helper for safe URL building
 
 export type Role = "patient" | "admin";
 
@@ -39,7 +39,7 @@ export type UserSafe = {
 export type PatientAccount = {
   _id?: string;
   userId: string;
-  currency: string; // default GBP
+  currency: string;
   balance: number;
   creditLimit: number;
   amountOwed: number;
@@ -82,7 +82,7 @@ export type RecordModel = {
   type: RecordType;
   title: string;
   summary: string | null;
-  data: any; // flexible report payload
+  data: any;
   recordedAt: string;
   clinician: string | null;
   status: RecordStatus;
@@ -148,7 +148,6 @@ export type AuditLog = {
 
 // ---------- Response Shapes ----------
 
-// Backend auth returns { token, user }, Next session routes may return { user } (token optional)
 export type AuthResponse = ApiOk<{ token: string; user: UserSafe }>;
 export type SessionAuthResponse = ApiOk<{ user: UserSafe; token?: string }>;
 
@@ -202,21 +201,14 @@ export type AdminAuditResponse = ApiOk<{ logs: AuditLog[] }>;
 
 export type RequestOptions = {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
-  token?: string; // Bearer token (server-side or special cases)
+  token?: string;
   query?: Record<string, string | number | boolean | null | undefined>;
   body?: unknown;
   headers?: Record<string, string>;
-  // Next.js fetch options
   cache?: RequestCache;
   next?: any;
   signal?: AbortSignal;
 };
-
-function joinUrl(base: string, path: string) {
-  const b = base.replace(/\/+$/, "");
-  const p = path.startsWith("/") ? path : `/${path}`;
-  return `${b}${p}`;
-}
 
 function toQueryString(q?: RequestOptions["query"]) {
   if (!q) return "";
@@ -264,21 +256,43 @@ async function safeReadJson(res: Response): Promise<any | null> {
 
 export type EvermoreApiConfig = {
   baseUrl?: string;
-  apiPrefix?: string; // default "/api"
+  apiPrefix?: string;
 };
 
 const IS_BROWSER = typeof window !== "undefined";
 
-// Server base (used in Route Handlers / Server Components)
-const DEFAULT_SERVER_BASE =
-  (typeof process !== "undefined" &&
-    (process.env.EVERMORE_API_URL ||
-      process.env.NEXT_PUBLIC_EVERMORE_API_URL ||
-      process.env.NEXT_PUBLIC_API_URL)) ||
-  "http://localhost:8080";
+/**
+ * Get the server-side base URL using canonical upstream helper.
+ * Only called on server-side.
+ */
+function getServerBase(): string {
+  // Import upstream helper dynamically to avoid issues on client
+  // Note: In actual usage, this will be evaluated at build/runtime
+  const raw = 
+    process.env.UPSTREAM_API_URL ||
+    process.env.EVERMORE_API_URL ||
+    process.env.EVERMORE_BACKEND_URL ||
+    process.env.BACKEND_URL;
 
-// ✅ Browser uses same-origin (no CORS), Server uses backend base
-const DEFAULT_BASE = IS_BROWSER ? "" : DEFAULT_SERVER_BASE;
+  if (raw) {
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+      console.error(`[Api.ts] Invalid UPSTREAM_API_URL: must start with http:// or https://`);
+      throw new Error("Invalid UPSTREAM_API_URL configuration");
+    }
+    return trimmed.replace(/\/+$/, "");
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    console.error("[Api.ts] UPSTREAM_API_URL not set in production!");
+    throw new Error("UPSTREAM_API_URL not configured");
+  }
+
+  return "http://localhost:8080";
+}
+
+// Browser uses same-origin (no CORS), Server uses backend base
+const DEFAULT_BASE = IS_BROWSER ? "" : getServerBase();
 
 export function createEvermoreApi(config: EvermoreApiConfig = {}) {
   const baseUrl = (config.baseUrl ?? DEFAULT_BASE).replace(/\/+$/, "");
@@ -286,13 +300,15 @@ export function createEvermoreApi(config: EvermoreApiConfig = {}) {
 
   async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     const method = opts.method || "GET";
-    const url = joinUrl(baseUrl, `${apiPrefix}${path}${toQueryString(opts.query)}`);
+    
+    // Use URL constructor for safe URL building
+    const fullPath = `${apiPrefix}${path}${toQueryString(opts.query)}`;
+    const url = baseUrl ? new URL(fullPath, baseUrl).toString() : fullPath;
 
     const headers: Record<string, string> = {
       ...(opts.headers || {}),
     };
 
-    // If token is provided, send it (useful server-side)
     if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
 
     const hasBody = opts.body !== undefined && opts.body !== null && method !== "GET";
@@ -309,8 +325,6 @@ export function createEvermoreApi(config: EvermoreApiConfig = {}) {
       method,
       headers,
       body,
-      // ✅ Browser MUST include cookies (HttpOnly token) when calling Next /api/*
-      // ✅ Server doesn't need cookies (server-to-server)
       credentials: IS_BROWSER ? "include" : "omit",
       cache: opts.cache ?? "no-store",
       next: opts.next,
@@ -334,8 +348,6 @@ export function createEvermoreApi(config: EvermoreApiConfig = {}) {
   }
 
   // ---------- Auth ----------
-  // ✅ Browser hits Next session routes (no CORS, cookie-based)
-  // ✅ Server hits backend auth routes (token-based)
   const auth = {
     signup: (input: { name: string; email: string; password: string; phone?: string | null }) =>
       IS_BROWSER
@@ -350,7 +362,6 @@ export function createEvermoreApi(config: EvermoreApiConfig = {}) {
     logout: () =>
       request<ApiOk<{ message?: string }>>("/session/logout", { method: "POST" }),
 
-    // If token is provided, use it; otherwise, expect a Next /api/auth/me route that reads cookie
     me: (token?: string) =>
       token
         ? request<MeResponse>("/auth/me", { method: "GET", token })
@@ -367,8 +378,6 @@ export function createEvermoreApi(config: EvermoreApiConfig = {}) {
   };
 
   // ---------- Patient ----------
-  // If token not provided (browser cookie flow), these expect Next /api/patient/* routes.
-  // profile/account also fall back to dashboard if the dedicated route isn't set up yet.
   const patient = {
     dashboard: (token?: string) =>
       token
@@ -379,9 +388,6 @@ export function createEvermoreApi(config: EvermoreApiConfig = {}) {
       tokenOrInput: string | { amount: number; currency?: string; method?: PaymentMethod; invoiceId?: string | null },
       maybeInput?: { amount: number; currency?: string; method?: PaymentMethod; invoiceId?: string | null }
     ) => {
-      // support both signatures:
-      //   createPaymentRequest(token, input)  [server]
-      //   createPaymentRequest(input)         [browser cookie flow]
       const hasToken = typeof tokenOrInput === "string";
       const token = hasToken ? (tokenOrInput as string) : undefined;
       const input = (hasToken ? maybeInput : tokenOrInput) as {
@@ -398,16 +404,12 @@ export function createEvermoreApi(config: EvermoreApiConfig = {}) {
 
     profile: async (token?: string) => {
       if (token) return request<ApiOk<{ user: UserSafe }>>("/patient/profile", { method: "GET", token });
-
-      // fallback (no extra route needed)
       const dash = await request<PatientDashboardResponse>("/patient/dashboard", { method: "GET" });
       return { ok: true as const, user: dash.user };
     },
 
     account: async (token?: string) => {
       if (token) return request<ApiOk<{ account: PatientAccount }>>("/patient/account", { method: "GET", token });
-
-      // fallback (no extra route needed)
       const dash = await request<PatientDashboardResponse>("/patient/dashboard", { method: "GET" });
       if (!dash.account) throw new ApiError("Account not found", 404, "ACCOUNT_NOT_FOUND");
       return { ok: true as const, account: dash.account };
@@ -415,7 +417,6 @@ export function createEvermoreApi(config: EvermoreApiConfig = {}) {
   };
 
   // ---------- Admin ----------
-  // Browser expects Next /api/admin/* routes. Server can call backend directly with token.
   const admin = {
     users: (token: string, params?: { page?: number; limit?: number; q?: string }) =>
       request<AdminUsersResponse>("/admin/users", { method: "GET", token, query: params }),

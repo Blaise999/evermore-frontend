@@ -1,30 +1,34 @@
+// app/api/patient/appointments/book/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import {
+  joinUpstream,
+  noStoreHeaders,
+  SESSION_COOKIE_NAME,
+} from "../../../../libs/upstream";
+import { logAndMapError } from "../../../../libs/errorMapper";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const BACKEND =
-  process.env.EVERMORE_BACKEND_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:8080";
-
 export async function POST(req: Request) {
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE_NAME)?.value;
+
+  if (!token) {
+    return NextResponse.json(
+      { ok: false, message: "Not signed in." },
+      { status: 401, headers: noStoreHeaders() }
+    );
+  }
+
   try {
     const body = await req.json();
 
-    // ✅ HttpOnly cookie token (no localStorage)
-    const cookieStore = await cookies();
-    const token = cookieStore.get("evermore_token")?.value;
+    // ✅ Use canonical upstream helper with new URL() for safe URL building
+    const upstreamUrl = joinUpstream("/api/patient/appointments/book");
 
-    if (!token) {
-      return NextResponse.json(
-        { ok: false, message: "Not authenticated (missing token)." },
-        { status: 401 }
-      );
-    }
-
-    const upstream = await fetch(`${BACKEND}/api/patient/appointments/book`, {
+    const upstream = await fetch(upstreamUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -36,17 +40,23 @@ export async function POST(req: Request) {
 
     const text = await upstream.text();
     let data: any = null;
+
     try {
       data = text ? JSON.parse(text) : null;
     } catch {
-      data = { ok: false, message: text || "Upstream returned non-JSON." };
+      console.error("[patient/appointments/book] Backend returned non-JSON:", text.slice(0, 200));
+      data = { ok: false, message: "Something went wrong. Try again." };
     }
 
-    return NextResponse.json(data, { status: upstream.status });
+    return NextResponse.json(data, {
+      status: upstream.status,
+      headers: noStoreHeaders(),
+    });
   } catch (err: any) {
+    const friendly = logAndMapError("patient/appointments/book", err);
     return NextResponse.json(
-      { ok: false, message: err?.message || "Server error" },
-      { status: 500 }
+      { ok: false, message: friendly.message },
+      { status: 500, headers: noStoreHeaders() }
     );
   }
 }

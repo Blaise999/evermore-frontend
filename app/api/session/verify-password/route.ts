@@ -1,18 +1,16 @@
-import { createEvermoreApi, ApiError, type AuthResponse } from "../../../libs/Api";
+// app/api/session/verify-password/route.ts
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import {
+  joinUpstream,
+  noStoreHeaders,
+  cookieConfigWithMaxAge,
+  SESSION_COOKIE_NAME,
+} from "../../../libs/upstream";
+import { logAndMapError } from "../../../libs/errorMapper";
 
-function buildSetCookie(name: string, value: string) {
-  const secure = process.env.NODE_ENV === "production";
-  const parts = [
-    `${name}=${encodeURIComponent(value)}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-    `Max-Age=${60 * 60 * 24 * 7}`,
-  ];
-  if (secure) parts.push("Secure");
-  return parts.join("; ");
-}
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 async function readPassword(req: Request): Promise<string | null> {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
@@ -23,7 +21,7 @@ async function readPassword(req: Request): Promise<string | null> {
     const p =
       j?.password ??
       j?.currentPassword ??
-      j?.newPassword ?? // (some UIs accidentally send this)
+      j?.newPassword ??
       null;
     return typeof p === "string" ? p : null;
   }
@@ -57,59 +55,80 @@ export async function POST(req: Request) {
     const password = rawPassword?.trim();
 
     if (!password) {
-      return Response.json(
-        {
-          ok: false,
-          message:
-            "Password required. Send JSON like { password: \"...\" } (Content-Type: application/json).",
-        },
-        { status: 400 }
+      return NextResponse.json(
+        { ok: false, message: "Password is required." },
+        { status: 400, headers: noStoreHeaders() }
       );
     }
 
     const jar = await cookies();
-    const token = jar.get("evermore_token")?.value;
+    const token = jar.get(SESSION_COOKIE_NAME)?.value;
 
     if (!token) {
-      return Response.json({ ok: false, message: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { ok: false, message: "Not signed in." },
+        { status: 401, headers: noStoreHeaders() }
+      );
     }
 
-    const backend = createEvermoreApi({
-      baseUrl: process.env.EVERMORE_API_URL || "http://localhost:8080",
-      apiPrefix: "/api",
+    // ✅ Use canonical upstream helper with new URL() for safe URL building
+    // First, get current user's email
+    const meUrl = joinUpstream("/api/auth/me");
+    const meRes = await fetch(meUrl, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
     });
 
-    // who am i?
-    const me = await backend.auth.me(token);
-    const email = me.user?.email?.trim();
+    if (!meRes.ok) {
+      return NextResponse.json(
+        { ok: false, message: "Session expired. Please sign in again." },
+        { status: 401, headers: noStoreHeaders() }
+      );
+    }
+
+    const meData = await meRes.json();
+    const email = meData?.user?.email?.trim();
 
     if (!email) {
-      return Response.json({ ok: false, message: "Session invalid" }, { status: 401 });
+      return NextResponse.json(
+        { ok: false, message: "Session invalid." },
+        { status: 401, headers: noStoreHeaders() }
+      );
     }
 
-    // verify by re-login (backend guarantees token)
-    const login = await backend.request<AuthResponse>("/auth/login", {
+    // Verify by re-login
+    const loginUrl = joinUpstream("/api/auth/login");
+    const loginRes = await fetch(loginUrl, {
       method: "POST",
-      body: { email, password },
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+      cache: "no-store",
     });
 
-    const headers = new Headers();
-    headers.set("Content-Type", "application/json");
-    headers.append("Set-Cookie", buildSetCookie("evermore_token", login.token));
+    const loginData = await loginRes.json().catch(() => ({}));
 
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
-  } catch (e: any) {
-    if (e instanceof ApiError) {
-      const status = e.status || 500;
-
-      // If backend says bad creds, treat as 401 for UX
-      if (status === 400 || status === 401) {
-        return Response.json({ ok: false, message: "Invalid password" }, { status: 401 });
-      }
-
-      return Response.json({ ok: false, message: e.message || "Verify failed" }, { status });
+    if (!loginRes.ok || !loginData?.ok) {
+      return NextResponse.json(
+        { ok: false, message: "Invalid password." },
+        { status: 401, headers: noStoreHeaders() }
+      );
     }
 
-    return Response.json({ ok: false, message: e?.message || "Verify failed" }, { status: 500 });
+    // Refresh the token
+    if (loginData?.token) {
+      jar.set(SESSION_COOKIE_NAME, loginData.token, cookieConfigWithMaxAge());
+    }
+
+    return NextResponse.json(
+      { ok: true },
+      { headers: noStoreHeaders() }
+    );
+  } catch (err: any) {
+    const friendly = logAndMapError("session/verify-password", err);
+    return NextResponse.json(
+      { ok: false, message: friendly.message },
+      { status: 500, headers: noStoreHeaders() }
+    );
   }
 }
