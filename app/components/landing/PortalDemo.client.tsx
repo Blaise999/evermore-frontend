@@ -97,7 +97,7 @@ export default function PortalDemo() {
   const [active, setActive] = useState<TabKey>("overview");
   const [maskMoney, setMaskMoney] = useState(false);
 
-  const amount = "$18,500";
+  const amount = "18,500";
   const masked = "•••••";
 
   const panels: Record<TabKey, React.ReactNode> = {
