@@ -252,7 +252,7 @@ export default function SignupForm() {
               className={inputBase()}
               value={form.lastName}
               onChange={(e) => onChange("lastName", e.target.value)}
-              placeholder="Idoko"
+              placeholder="wallace"
               autoComplete="family-name"
             />
           </Field>
