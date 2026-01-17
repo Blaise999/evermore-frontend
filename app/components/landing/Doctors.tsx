@@ -78,7 +78,7 @@ export default function Doctors() {
               <MiniTag text="Care coordination" />
             </div>
 
-            <div className="mt-5 relative h-36 overflow-hidden rounded-3xl ring-1 ring-white/15">
+            <div className="mt-5 relative h-40 overflow-hidden rounded-3xl ring-1 ring-white/15">
               <Image
                 src="/Pictures/facility-8.jpg"
                 alt="Evermore facility"
@@ -101,10 +101,12 @@ export default function Doctors() {
               key={d.n}
               className="overflow-hidden rounded-3xl bg-white ring-1 ring-slate-200 shadow-[0_20px_60px_rgba(2,8,23,.08)]"
             >
-              <div className="relative h-44">
+              {/* Bigger image area */}
+              <div className="relative h-52 sm:h-56">
                 <Image src={d.img} alt={d.n} fill className="object-cover" quality={82} sizes="50vw" />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950/55 via-transparent to-transparent" />
               </div>
+
               <div className="p-5">
                 <div className="text-sm font-semibold text-slate-900">{d.n}</div>
                 <div className="mt-1 text-xs font-semibold text-slate-500">{d.s}</div>

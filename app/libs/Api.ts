@@ -150,6 +150,7 @@ export type AuditLog = {
 
 export type AuthResponse = ApiOk<{ token: string; user: UserSafe }>;
 export type SessionAuthResponse = ApiOk<{ user: UserSafe; token?: string }>;
+export type SignupResponse = ApiOk<{ message: string }>;
 
 export type MeResponse = ApiOk<{ user: UserSafe; account: PatientAccount | null }>;
 
@@ -351,8 +352,8 @@ export function createEvermoreApi(config: EvermoreApiConfig = {}) {
   const auth = {
     signup: (input: { name: string; email: string; password: string; phone?: string | null }) =>
       IS_BROWSER
-        ? request<SessionAuthResponse>("/session/signup", { method: "POST", body: input })
-        : request<SessionAuthResponse>("/auth/signup", { method: "POST", body: input }),
+        ? request<SignupResponse>("/session/signup", { method: "POST", body: input })
+        : request<SignupResponse>("/auth/signup", { method: "POST", body: input }),
 
     login: (input: { email: string; password: string }) =>
       IS_BROWSER

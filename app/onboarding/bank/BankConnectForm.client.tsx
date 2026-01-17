@@ -261,7 +261,7 @@ export default function Onboarding() {
     <div className="rounded-[32px] bg-white p-6 ring-1 ring-slate-200 shadow-[0_26px_90px_rgba(2,8,23,.10)] sm:p-8">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-xs font-semibold text-slate-500">Step 2 of 2</div>
+          <div className="text-xs font-semibold text-slate-500">Step 3 of 3</div>
           <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Connect your UK bank</h2>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">
             Connect your bank account securely via Open Banking to enable instant payments.
@@ -288,7 +288,8 @@ export default function Onboarding() {
           <div className="h-full rounded-full bg-blue-600 transition" style={{ width: `100%` }} />
         </div>
         <div className="mt-2 flex items-center justify-between text-xs font-semibold text-slate-500">
-          <span className="text-slate-900">Profile</span>
+          <span className="text-emerald-600">✓ Account</span>
+          <span className="text-emerald-600">✓ Verify email</span>
           <span className="text-slate-900">Connect bank</span>
         </div>
       </div>

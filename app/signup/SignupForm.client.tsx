@@ -220,7 +220,7 @@ export default function SignupForm() {
     <div className="rounded-[32px] bg-white p-6 ring-1 ring-slate-200 shadow-[0_26px_90px_rgba(2,8,23,.10)] sm:p-8">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-xs font-semibold text-slate-500">Create account</div>
+          <div className="text-xs font-semibold text-slate-500">Step 1 of 3 — Create account</div>
           <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Your patient profile</h2>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">
             Create your account, then verify your email. After verification, you’ll connect your UK bank before accessing

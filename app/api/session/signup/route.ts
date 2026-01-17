@@ -1,11 +1,8 @@
 // app/api/session/signup/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import {
   joinUpstream,
   noStoreHeaders,
-  cookieConfigWithMaxAge,
-  SESSION_COOKIE_NAME,
 } from "../../../libs/upstream";
 import { logAndMapError } from "../../../libs/errorMapper";
 
@@ -66,21 +63,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Backend returns { ok: true, token, user }
-    if (!data.token) {
-      console.error("[session/signup] Backend did not return token");
-      return NextResponse.json(
-        { ok: false, message: "Something went wrong. Try again." },
-        { status: 500, headers: noStoreHeaders() }
-      );
-    }
-
-    // Set HttpOnly cookie
-    const jar = await cookies();
-    jar.set(SESSION_COOKIE_NAME, data.token, cookieConfigWithMaxAge());
-
+    // New flow: Backend returns { ok: true, message } - no token until email is verified
+    // We do NOT set a cookie here - user needs to verify email first
     return NextResponse.json(
-      { ok: true, user: data.user },
+      { ok: true, message: data.message || "Verification email sent. Please check your inbox." },
       { headers: noStoreHeaders() }
     );
   } catch (err: any) {
