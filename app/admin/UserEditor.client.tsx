@@ -864,12 +864,12 @@ function EditInvoiceModal({
           <Field label="Due">
             <TextInput value={dueLocal} onChange={setDueLocal} type="datetime-local" />
           </Field>
-          </Field>
           <Field label="Diagnosis">
             <TextInput value={diagnosis} onChange={setDiagnosis} placeholder="Clinical diagnosis" />
           </Field>
           <Field label="Notes">
             <TextInput value={notes} onChange={setNotes} placeholder="Additional billing notes" />
+          </Field>
         </div>
       </div>
     </Modal>

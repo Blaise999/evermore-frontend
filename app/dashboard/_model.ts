@@ -44,11 +44,16 @@ export type Invoice = {
   status: "Unpaid" | "Pending approval" | "Paid" | "Overdue" | "Waived";
   createdISO: string;
   dueISO: string;
-  // Option A (CareFlex repayments): invoices keep a clean "Issued" lifecycle.
-  // We compute coverage from repayment history and show it as UI-only fields.
+
+  // Optional clinical / billing context fields
+  ailment?: string;
+  diagnosis?: string;
+  notes?: string;
+
+  // CareFlex repayment fields
   currency?: string; // default: GBP
-  covered?: number; // how much has been covered (allocation oldest-first)
-  balanceDue?: number; // amount - covered
+  covered?: number;
+  balanceDue?: number;
 };
 
 export const LOCALE = "en-GB";

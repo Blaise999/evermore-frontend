@@ -12,11 +12,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE_NAME)?.value;
+
+  // Always await params in Next.js 15+
   const { id } = await params;
 
   if (!token) {
@@ -27,7 +29,6 @@ export async function GET(
   }
 
   try {
-    // Use canonical upstream helper with new URL() for safe URL building
     const upstreamUrl = joinUpstream("/api/patient/dashboard");
 
     const upstream = await fetch(upstreamUrl, {
@@ -45,7 +46,7 @@ export async function GET(
     try {
       dash = text ? JSON.parse(text) : null;
     } catch {
-      console.error("[portal/invoices/id] Backend returned non-JSON:", text.slice(0, 200));
+      console.error("[portal/invoices/[id]] Backend returned non-JSON:", text.slice(0, 200));
       return NextResponse.json(
         { ok: false, data: { message: "Something went wrong. Try again." } },
         { status: 500, headers: noStoreHeaders() }
@@ -53,7 +54,10 @@ export async function GET(
     }
 
     if (!upstream.ok) {
-      const friendly = logAndMapError("portal/invoices/id", { status: upstream.status, ...dash });
+      const friendly = logAndMapError("portal/invoices/[id]", {
+        status: upstream.status,
+        ...dash,
+      });
       return NextResponse.json(
         { ok: false, data: { message: friendly.message } },
         { status: upstream.status, headers: noStoreHeaders() }
@@ -67,11 +71,15 @@ export async function GET(
       return invId === String(id);
     });
 
-    // Always return 200 with a helpful payload so the client can show it in the modal
-    const data = hit ?? { message: "Invoice not found", invoiceId: String(id) };
+    // Always return 200 with helpful payload for the modal
+    const data = hit ?? { 
+      message: "Invoice not found", 
+      invoiceId: String(id) 
+    };
+
     return NextResponse.json({ ok: true, data }, { headers: noStoreHeaders() });
   } catch (err: any) {
-    const friendly = logAndMapError("portal/invoices/id", err);
+    const friendly = logAndMapError("portal/invoices/[id]", err);
     return NextResponse.json(
       { ok: false, data: { message: friendly.message } },
       { status: 500, headers: noStoreHeaders() }
