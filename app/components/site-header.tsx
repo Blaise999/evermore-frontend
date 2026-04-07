@@ -200,7 +200,7 @@ export default function SiteHeader() {
                 height={40}
                 className={cx("h-8 w-auto", scrolled ? "md:h-7" : "md:h-9")}
                 priority
-              />
+               quality={85} />
               <span className="hidden text-sm font-semibold text-slate-800 md:inline">
                 {BRAND.name}
               </span>
@@ -346,7 +346,7 @@ export default function SiteHeader() {
           <div className="absolute left-0 top-0 h-full w-[86%] max-w-[320px] bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b px-4 py-4">
               <Link href="/" onClick={() => setMobileOpen(false)} className="flex items-center gap-2">
-                <Image src="/Pictures/Logo.png" alt={BRAND.name} width={120} height={36} className="h-7 w-auto" />
+                <Image src="/Pictures/Logo.png" alt={BRAND.name} width={120} height={36} className="h-7 w-auto"  quality={85} />
               </Link>
               <button
                 className="rounded-lg px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"

@@ -269,7 +269,7 @@ const totalPaid = useMemo(() => {
                           onClick={() => onDownloadInvoice(inv.id, inv.title)}
                           className="rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
                         >
-                          Download PDF
+                          Print / Save PDF
                         </button>
                       </div>
                     </div>
@@ -331,7 +331,7 @@ const totalPaid = useMemo(() => {
                           onClick={() => onDownloadInvoice(inv.id, inv.title)}
                           className="rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
                         >
-                          Download PDF
+                          Print / Save PDF
                         </button>
                       </div>
                     </div>

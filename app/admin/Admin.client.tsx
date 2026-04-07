@@ -127,6 +127,7 @@ export default function AdminClient() {
   );
 
   const [profile, setProfile] = useState<AnyObj | null>(null);
+  const [account, setAccount] = useState<AnyObj | null>(null);
   const [records, setRecords] = useState<AnyObj[]>([]);
   const [appts, setAppts] = useState<AnyObj[]>([]);
   const [invoices, setInvoices] = useState<AnyObj[]>([]);
@@ -201,17 +202,19 @@ export default function AdminClient() {
   async function loadSelectedUserData(userId: string) {
     setLoadingUserData(true);
     try {
-      const [p, r, a, i] = await Promise.all([
+      const [p, r, a, i, ud] = await Promise.all([
         apiJson<{ ok: true; profile: AnyObj | null }>(`/api/admin/users/${userId}/profile`),
         apiJson<{ ok: true; items: AnyObj[] }>(`/api/admin/users/${userId}/records`),
         apiJson<{ ok: true; items: AnyObj[] }>(`/api/admin/users/${userId}/appointments`),
         apiJson<{ ok: true; items: AnyObj[] }>(`/api/admin/users/${userId}/invoices`),
+        apiJson<any>(`/api/admin/users/${userId}`).catch(() => ({})),
       ]);
 
       setProfile(p.profile ? normalizeId(p.profile) : null);
       setRecords((r.items || []).map(normalizeId));
       setAppts((a.items || []).map(normalizeId));
       setInvoices((i.items || []).map(normalizeId));
+      setAccount(ud?.account ? normalizeId(ud.account) : null);
 
       pushToast("ok", "User data loaded");
     } catch (e: any) {
@@ -273,6 +276,40 @@ export default function AdminClient() {
       loadUsers();
     } catch (e: any) {
       pushToast("bad", e?.message || "Failed to save profile");
+    }
+  }
+
+  async function updateAccount(patch: AnyObj) {
+    if (!selectedUserId) return;
+    try {
+      const data = await apiJson<{ ok: true; account: AnyObj }>(`/api/admin/users/${selectedUserId}/account`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+      setAccount(data.account ? normalizeId(data.account) : null);
+      pushToast("ok", "Account updated");
+    } catch (e: any) {
+      pushToast("bad", e?.message || "Failed to update account");
+    }
+  }
+
+  async function downloadInvoicePdf(invoiceId: string) {
+    if (!invoiceId) return;
+    try {
+      const res = await fetch(`/api/admin/invoices/${invoiceId}/pdf`);
+      if (!res.ok) throw new Error("PDF download failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Evermore-Invoice-${invoiceId.slice(-8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      pushToast("ok", "PDF downloaded");
+    } catch (e: any) {
+      pushToast("bad", e?.message || "Failed to download PDF");
     }
   }
 
@@ -635,6 +672,79 @@ export default function AdminClient() {
                       </Button>
                       <Button tone="ghost" onClick={() => { safeCopy(selectedUser.email); pushToast("ok", "Email copied"); }}>
                         Copy Email
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* CareFlex Account */}
+                {tab === "profile" && account && (
+                  <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50/30 p-5">
+                    <h3 className="text-base font-semibold text-slate-900 mb-4">CareFlex Account</h3>
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <Field label="Credit Limit (£)">
+                        <TextInput
+                          type="number"
+                          value={String(account.creditLimit ?? 1000)}
+                          onChange={(v: string) => setAccount((a: any) => ({ ...a, creditLimit: Number(v) }))}
+                        />
+                      </Field>
+                      <Field label="Amount Owed (£)">
+                        <TextInput
+                          type="number"
+                          value={String(account.amountOwed ?? 0)}
+                          onChange={() => {}}
+                        />
+                      </Field>
+                      <Field label="Balance (£)">
+                        <TextInput
+                          type="number"
+                          value={String(account.balance ?? 0)}
+                          onChange={(v: string) => setAccount((a: any) => ({ ...a, balance: Number(v) }))}
+                        />
+                      </Field>
+                    </div>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                      <Field label="Payment Due Date">
+                        <TextInput
+                          type="date"
+                          value={account.owedDueAt ? new Date(account.owedDueAt).toISOString().split("T")[0] : ""}
+                          onChange={(v: string) => setAccount((a: any) => ({ ...a, owedDueAt: v || null }))}
+                        />
+                      </Field>
+                      <Field label="Account Notes">
+                        <TextInput
+                          value={account.notes || ""}
+                          onChange={(v: string) => setAccount((a: any) => ({ ...a, notes: v }))}
+                          placeholder="Internal notes..."
+                        />
+                      </Field>
+                    </div>
+                    <div className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-blue-100">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.min(100, ((account.amountOwed || 0) / (account.creditLimit || 1000)) * 100)}%`,
+                          background: ((account.amountOwed || 0) / (account.creditLimit || 1000)) > 0.9 ? "#EF4444" : ((account.amountOwed || 0) / (account.creditLimit || 1000)) > 0.7 ? "#F59E0B" : "#2563EB",
+                        }}
+                      />
+                    </div>
+                    <div className="mt-2 flex justify-between text-xs text-slate-500">
+                      <span>{"Owed: £" + (account.amountOwed || 0).toFixed(2)}</span>
+                      <span>{"Available: £" + Math.max(0, (account.creditLimit || 1000) - (account.amountOwed || 0)).toFixed(2)}</span>
+                      <span>{"Limit: £" + (account.creditLimit || 1000).toFixed(2)}</span>
+                    </div>
+                    <div className="mt-4">
+                      <Button
+                        tone="primary"
+                        onClick={() => updateAccount({
+                          creditLimit: account.creditLimit,
+                          balance: account.balance,
+                          owedDueAt: account.owedDueAt,
+                          notes: account.notes,
+                        })}
+                      >
+                        Save Account
                       </Button>
                     </div>
                   </div>

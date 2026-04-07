@@ -46,7 +46,7 @@ export default function Hero() {
             alt="Evermore hero"
             fill
             priority={i === 0}
-            quality={88}
+            quality={92}
             sizes="100vw"
             className="object-cover [filter:saturate(1.18)_contrast(1.12)_brightness(1.02)]"
           />

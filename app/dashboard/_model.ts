@@ -9,7 +9,7 @@ export type PatientProfile = {
   phone: string;
 
   eligibilityScore: number; // 0-999
-  careflexLimit: number; // EUR
+  careflexLimit: number; // GBP
   careflexTermsDays: number;
 };
 
@@ -46,7 +46,7 @@ export type Invoice = {
   dueISO: string;
   // Option A (CareFlex repayments): invoices keep a clean "Issued" lifecycle.
   // We compute coverage from repayment history and show it as UI-only fields.
-  currency?: string; // default: EUR
+  currency?: string; // default: GBP
   covered?: number; // how much has been covered (allocation oldest-first)
   balanceDue?: number; // amount - covered
 };
@@ -65,9 +65,9 @@ const moneyFmt = new Intl.NumberFormat(LOCALE, {
   maximumFractionDigits: 0,
 });
 
-const moneyFmtEUR = new Intl.NumberFormat(LOCALE, {
+const moneyFmtGBP = new Intl.NumberFormat(LOCALE, {
   style: "currency",
-  currency: "EUR",
+  currency: "GBP",
   maximumFractionDigits: 0,
 });
 
@@ -85,18 +85,19 @@ const timeFmt = new Intl.DateTimeFormat(LOCALE, {
   hour12: false,
 });
 
+// fmtMoneyGBP is the primary formatter
 export function fmtMoneyGBP(n: number) {
   return moneyFmt.format(Number.isFinite(n) ? n : 0);
 }
 
 export function fmtMoneyEUR(n: number) {
-  return moneyFmtEUR.format(Number.isFinite(n) ? n : 0);
+  return moneyFmtGBP.format(Number.isFinite(n) ? n : 0);
 }
 
 export function fmtMoney(n: number, currency: string) {
   const c = String(currency || "").toUpperCase();
-  if (c === "EUR") return fmtMoneyEUR(n);
-  // default to EUR for this project
+  if (c === "GBP" || c === "EUR") return fmtMoneyEUR(n);
+  // default to GBP for this project
   return fmtMoneyEUR(n);
 }
 

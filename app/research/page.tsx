@@ -1350,7 +1350,7 @@ export default function ResearchPage() {
             <p className="mt-2 text-sm leading-relaxed text-slate-600">
               This is UI-only right now. If you want, I’ll wire it to a backend
               route (e.g. POST /api/research/collaborate) and store in Mongo +
-              admin inbox.
+              team inbox.
             </p>
 
             {collabSent ? (

@@ -130,7 +130,7 @@ export default function LocationDetailPage({ params }: { params: { slug: string 
               key={src}
               className="relative h-44 overflow-hidden rounded-3xl bg-white ring-1 ring-slate-200 shadow-[0_16px_36px_rgba(2,8,23,.08)]"
             >
-              <Image src={src} alt={`${x.name} gallery ${i + 1}`} fill className="object-cover" quality={82} sizes="33vw" />
+              <Image src={src} alt={`${x.name} gallery ${i + 1}`} fill className="object-cover" quality={90} sizes="33vw" />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/45 to-transparent" />
             </div>
           ))}

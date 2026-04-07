@@ -11,7 +11,7 @@ export function Brand({ href = "/" }: { href?: string }) {
           fill
           className="object-contain p-1"
           priority
-        />
+         quality={85}  sizes="(max-width: 768px) 100vw, 50vw" />
       </span>
       <span className="leading-tight">
         <span className="block text-sm text-slate-500">Evermore</span>

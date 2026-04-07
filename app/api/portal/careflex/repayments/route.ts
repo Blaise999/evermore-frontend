@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     }
 
     // Euro only (as configured)
-    const payload = { amount, currency: "EUR" };
+    const payload = { amount, currency: "GBP" };
 
     // Use canonical upstream helper with new URL() for safe URL building
     const upstreamUrl = joinUpstream("/api/patient/careflex/repayments");

@@ -1,28 +1,25 @@
 @import "tailwindcss";
 
 :root {
-  --bg: 255 255 255;        /* white */
-  --text: 15 23 42;         /* slate-900 */
-  --muted: 100 116 139;     /* slate-500 */
-  --line: 226 232 240;      /* slate-200 */
-  --card: 255 255 255;      /* white */
-  --brand: 37 99 235;       /* blue-600 */
-  --brand2: 56 189 248;     /* sky-400 */
-  
-  /* ✅ Evermore Brand tokens */
-  --evermore-brand: 37 99 235;        /* Primary brand blue */
-  --evermore-brand-light: 59 130 246; /* Lighter brand blue */
-  --evermore-brand-glow: 96 165 250;  /* Brand glow effect */
-  --evermore-accent: 56 189 248;      /* Secondary accent (sky) */
-  --evermore-surface-dark: 7 10 15;   /* Dark mode surface */
-  --evermore-surface-card: 15 23 42;  /* Dark mode card */
-  --evermore-text-dark: 248 250 252;  /* Dark mode text */
-  --evermore-text-muted: 148 163 184; /* Dark mode muted text */
+  --bg: 255 255 255;
+  --text: 15 23 42;
+  --muted: 100 116 139;
+  --line: 226 232 240;
+  --card: 255 255 255;
+  --brand: 37 99 235;
+  --brand2: 56 189 248;
+
+  --evermore-brand: 37 99 235;
+  --evermore-brand-light: 59 130 246;
+  --evermore-brand-glow: 96 165 250;
+  --evermore-accent: 56 189 248;
+  --evermore-surface-dark: 7 10 15;
+  --evermore-surface-card: 15 23 42;
+  --evermore-text-dark: 248 250 252;
+  --evermore-text-muted: 148 163 184;
 }
 
-/* ✅ Dark mode overrides */
-.dark,
-[data-theme="dark"] {
+.dark, [data-theme="dark"] {
   --bg: 7 10 15;
   --text: 248 250 252;
   --muted: 148 163 184;
@@ -30,72 +27,133 @@
   --card: 15 23 42;
 }
 
-html, body { height: 100%; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { font-family: 'DM Sans', system-ui, -apple-system, sans-serif; line-height: 1.6; }
 
-body {
-  color: rgb(var(--text));
-  background:
-    radial-gradient(900px 500px at 15% 0%, rgba(var(--brand2), .18), transparent 60%),
-    radial-gradient(900px 500px at 85% 10%, rgba(var(--brand), .12), transparent 55%),
-    linear-gradient(180deg, rgb(var(--bg)) 0%, rgb(var(--bg)) 100%);
+/* ===== Animations ===== */
+@keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+@keyframes slideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+@keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+.animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+.animate-slide-up { animation: slideUp 0.5s ease-out forwards; }
+
+/* ===== Dashboard Cards ===== */
+.ev-card {
+  background: rgb(var(--card)); border: 1px solid rgb(var(--line) / 0.5);
+  border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+.ev-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); border-color: rgb(var(--line)); }
+.ev-card-elevated { box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
+
+/* ===== Dashboard Buttons ===== */
+.ev-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px 20px; border-radius: 12px;
+  font-weight: 500; font-size: 14px;
+  transition: all 0.15s ease; cursor: pointer; border: none;
+  text-decoration: none; white-space: nowrap;
+}
+.ev-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ev-btn-primary { background: rgb(var(--brand)); color: white; }
+.ev-btn-primary:hover:not(:disabled) { filter: brightness(1.15); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(37,99,235,0.25); }
+.ev-btn-outline { background: transparent; border: 1.5px solid rgb(var(--line)); color: rgb(var(--text)); border-radius: 12px; }
+.ev-btn-outline:hover:not(:disabled) { border-color: rgb(var(--brand)); color: rgb(var(--brand)); }
+.ev-btn-ghost { background: transparent; color: rgb(var(--muted)); }
+.ev-btn-ghost:hover:not(:disabled) { color: rgb(var(--text)); background: rgb(var(--line) / 0.3); }
+.ev-btn-sm { padding: 6px 14px; font-size: 12px; border-radius: 10px; }
+
+/* ===== Dashboard Inputs ===== */
+.ev-input {
+  width: 100%; padding: 10px 14px;
+  background: rgb(var(--card)); border: 1.5px solid rgb(var(--line));
+  border-radius: 12px; font-size: 14px;
+  color: rgb(var(--text)); transition: border-color 0.15s, box-shadow 0.15s; outline: none;
+}
+.ev-input:focus { border-color: rgb(var(--brand)); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.ev-input::placeholder { color: rgb(var(--muted)); }
+
+/* ===== Dashboard Badges ===== */
+.ev-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: 100px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase;
+}
+.ev-badge-success { background: #D1FAE5; color: #065F46; }
+.ev-badge-warning { background: #FEF3C7; color: #92400E; }
+.ev-badge-danger { background: #FEE2E2; color: #991B1B; }
+.ev-badge-info { background: #DBEAFE; color: #1E40AF; }
+.ev-badge-neutral { background: #F1F5F9; color: #64748B; }
+
+/* ===== Dashboard Gauge ===== */
+.careflex-gauge-track { height: 10px; background: #EFF6FF; border-radius: 5px; overflow: hidden; }
+.careflex-gauge-fill { height: 100%; border-radius: 5px; transition: width 0.7s cubic-bezier(0.4,0,0.2,1); }
+.careflex-gauge-fill.safe { background: linear-gradient(90deg, #2563EB, #60A5FA); }
+.careflex-gauge-fill.warning { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
+.careflex-gauge-fill.danger { background: linear-gradient(90deg, #EF4444, #F87171); }
+
+/* ===== Dashboard Stats ===== */
+.ev-stat {
+  position: relative; overflow: hidden;
+  background: rgb(var(--card)); border: 1px solid rgb(var(--line) / 0.5);
+  border-radius: 16px; padding: 20px 24px;
+}
+.ev-stat::before { content:''; position: absolute; top:0; left:0; width: 4px; height: 100%; border-radius: 4px 0 0 4px; }
+.ev-stat-teal::before { background: #2563EB; }
+.ev-stat-green::before { background: #10B981; }
+.ev-stat-red::before { background: #EF4444; }
+.ev-stat-gold::before { background: #F59E0B; }
+
+/* ===== Dashboard Table ===== */
+.ev-table { width: 100%; border-collapse: collapse; }
+.ev-table th { padding: 10px 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: rgb(var(--muted)); text-align: left; border-bottom: 1px solid rgb(var(--line)); background: rgb(var(--bg) / 0.5); }
+.ev-table td { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid rgb(var(--line) / 0.3); }
+.ev-table tr:last-child td { border-bottom: none; }
+.ev-table tr:hover td { background: rgba(37,99,235,0.02); }
+
+/* ===== Dashboard Tabs ===== */
+.ev-tabs { display: flex; gap: 2px; background: #EFF6FF; padding: 3px; border-radius: 12px; }
+.ev-tab {
+  flex: 1; padding: 8px 14px; border-radius: 10px;
+  font-size: 13px; font-weight: 500; text-align: center;
+  color: rgb(var(--muted)); cursor: pointer; transition: all 0.15s;
+  background: transparent; border: none;
+}
+.ev-tab:hover { color: rgb(var(--text)); }
+.ev-tab-active { background: white; color: rgb(var(--brand)); box-shadow: 0 1px 4px rgba(37,99,235,0.1); font-weight: 600; }
+
+/* ===== Modal ===== */
+.ev-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(15,23,42,0.4); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.ev-modal {
+  background: rgb(var(--card)); border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.15); width: 100%; max-height: 90vh; overflow-y: auto;
 }
 
-/* ✅ These were in your layout but not defined anywhere */
-@layer utilities {
-  .bg-canvas {
-    background:
-      radial-gradient(900px 500px at 15% 0%, rgba(var(--brand2), .18), transparent 60%),
-      radial-gradient(900px 500px at 85% 10%, rgba(var(--brand), .12), transparent 55%),
-      linear-gradient(180deg, rgb(var(--bg)) 0%, rgb(var(--bg)) 100%);
-  }
+/* ===== Glass ===== */
+.ev-glass { background: rgba(255,255,255,0.8); backdrop-filter: blur(16px) saturate(180%); border: 1px solid rgba(255,255,255,0.3); }
 
-  .bg-grain {
-    background-image:
-      repeating-linear-gradient(
-        0deg,
-        rgba(2, 6, 23, 0.03),
-        rgba(2, 6, 23, 0.03) 1px,
-        transparent 1px,
-        transparent 2px
-      );
-    mix-blend-mode: multiply;
-    opacity: 0.35;
-    pointer-events: none;
-  }
-  
-  /* ✅ Evermore dark theme utilities */
-  .evermore-dark-bg {
-    background: rgb(var(--evermore-surface-dark));
-  }
-  
-  .evermore-dark-card {
-    background: rgb(var(--evermore-surface-card));
-  }
-  
-  .evermore-brand-text {
-    color: rgb(var(--evermore-brand-light));
-  }
-  
-  .evermore-brand-bg {
-    background: rgb(var(--evermore-brand));
-  }
-  
-  .evermore-brand-border {
-    border-color: rgba(var(--evermore-brand), 0.3);
-  }
-  
-  .evermore-glow {
-    box-shadow: 0 0 30px rgba(var(--evermore-brand-glow), 0.15);
-  }
-  
-  .evermore-glow-sm {
-    box-shadow: 0 0 15px rgba(var(--evermore-brand-glow), 0.1);
-  }
-  
-  .evermore-gradient-dark {
-    background: 
-      radial-gradient(900px 500px at 18% 10%, rgba(var(--evermore-brand), 0.10), transparent 55%),
-      radial-gradient(900px 500px at 82% 20%, rgba(var(--evermore-accent), 0.07), transparent 60%),
-      radial-gradient(900px 600px at 50% 90%, rgba(var(--evermore-brand-light), 0.06), transparent 60%);
-  }
+/* ===== Receipt ===== */
+.ev-receipt { background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 30px rgba(0,0,0,0.08); }
+.ev-receipt-header { background: #1E40AF; color: white; padding: 28px 32px; position: relative; overflow: hidden; }
+.ev-receipt-body { padding: 28px 32px; }
+.ev-receipt-footer { background: #F8FAFC; padding: 16px 32px; border-top: 1px solid #E2E8F0; }
+
+/* ===== Progress bar ===== */
+.progress-bar { height: 6px; background: #EFF6FF; border-radius: 3px; overflow: hidden; }
+.progress-bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s cubic-bezier(0.4,0,0.2,1); }
+
+/* ===== Skeleton ===== */
+.ev-skeleton {
+  background: linear-gradient(90deg, #F1F5F9 25%, #F8FAFC 50%, #F1F5F9 75%);
+  background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 8px;
 }
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.3); border-radius: 3px; }

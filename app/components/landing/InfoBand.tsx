@@ -33,7 +33,7 @@ export default function InfoBand() {
             className="relative overflow-hidden rounded-3xl bg-white ring-1 ring-slate-200 shadow-[0_22px_70px_rgba(2,8,23,.10)]"
           >
             <div className="relative h-40">
-              <Image src={p.img} alt={p.t} fill className="object-cover" quality={82} sizes="33vw" />
+              <Image src={p.img} alt={p.t} fill className="object-cover" quality={90} sizes="(max-width: 768px) 100vw, 33vw" />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-slate-950/15 to-transparent" />
               <div className="absolute left-4 top-4">
                 <MiniTag text={p.tag} />

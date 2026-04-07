@@ -1,11 +1,6 @@
-// app/api/portal/invoices/[id]/submit-payment/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import {
-  joinUpstream,
-  noStoreHeaders,
-  SESSION_COOKIE_NAME,
-} from "../../../../../libs/upstream";
+import { joinUpstream, noStoreHeaders, SESSION_COOKIE_NAME } from "../../../../../libs/upstream";
 import { logAndMapError } from "../../../../../libs/errorMapper";
 
 export const runtime = "nodejs";
@@ -19,75 +14,49 @@ export async function POST(
   const token = jar.get(SESSION_COOKIE_NAME)?.value;
 
   if (!token) {
-    return NextResponse.json(
-      { ok: false, message: "Not signed in." },
-      { status: 401, headers: noStoreHeaders() }
-    );
+    return NextResponse.json({ ok: false, message: "Not signed in." }, { status: 401, headers: noStoreHeaders() });
   }
 
   const { id } = await params;
   const invoiceId = String(id || "");
 
   if (!invoiceId || invoiceId === "undefined" || invoiceId === "null") {
-    return NextResponse.json(
-      { ok: false, message: "Invalid invoice ID.", invoiceId },
-      { status: 400, headers: noStoreHeaders() }
-    );
+    return NextResponse.json({ ok: false, message: "Invalid invoice ID." }, { status: 400, headers: noStoreHeaders() });
   }
 
   try {
-    // Read body once (avoid stream reuse errors)
     const bodyObj = await req.json().catch(() => ({}));
 
-    // Use canonical upstream helper with new URL() for safe URL building
-    // Try the most likely backend routes (adjust if yours is different)
-    const candidates = [
-      `/api/patient/invoices/${invoiceId}/submit-payment`,
-      `/api/patient/invoices/${invoiceId}/pay`,
-      `/api/patient/invoices/${invoiceId}/pay-now`,
-    ];
+    // Call the backend patient payments endpoint
+    const upstreamUrl = joinUpstream("/api/patient/payments");
 
-    let lastStatus = 0;
-    let lastText = "";
+    const r = await fetch(upstreamUrl, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        invoiceId,
+        amount: bodyObj.amount || undefined,
+        method: bodyObj.method || "card",
+        currency: "GBP",
+      }),
+    });
 
-    for (const path of candidates) {
-      const upstreamUrl = joinUpstream(path);
+    const data = await r.json().catch(() => ({ ok: false, message: "Invalid response" }));
 
-      const r = await fetch(upstreamUrl, {
-        method: "POST",
-        cache: "no-store",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(bodyObj),
-      }).catch(() => null);
-
-      if (r?.ok) {
-        const data = await r.json().catch(() => ({}));
-        return NextResponse.json(data, { headers: noStoreHeaders() });
-      }
-
-      if (r) {
-        lastStatus = r.status;
-        lastText = await r.text().catch(() => "");
-      }
+    if (!r.ok) {
+      return NextResponse.json(
+        { ok: false, message: data?.message || "Payment failed." },
+        { status: r.status, headers: noStoreHeaders() }
+      );
     }
 
-    return NextResponse.json(
-      {
-        ok: false,
-        message: "Payment endpoint not found on backend.",
-        invoiceId,
-        lastStatus,
-      },
-      { status: 404, headers: noStoreHeaders() }
-    );
+    return NextResponse.json(data, { headers: noStoreHeaders() });
   } catch (err: any) {
     const friendly = logAndMapError("portal/invoices/submit-payment", err);
-    return NextResponse.json(
-      { ok: false, message: friendly.message },
-      { status: 500, headers: noStoreHeaders() }
-    );
+    return NextResponse.json({ ok: false, message: friendly.message }, { status: 500, headers: noStoreHeaders() });
   }
 }

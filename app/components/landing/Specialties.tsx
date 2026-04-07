@@ -123,7 +123,7 @@ export default function Specialties() {
             className="group relative overflow-hidden rounded-3xl bg-white ring-1 ring-slate-200 shadow-[0_22px_70px_rgba(2,8,23,.10)] transition hover:-translate-y-0.5 hover:shadow-[0_30px_90px_rgba(2,8,23,.14)]"
           >
             <div className="relative h-44">
-              <Image src={x.img} alt={x.t} fill className="object-cover" quality={82} sizes="33vw" />
+              <Image src={x.img} alt={x.t} fill className="object-cover" quality={90} sizes="(max-width: 768px) 100vw, 33vw" />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-slate-950/15 to-transparent" />
             </div>
             <div className="p-6">

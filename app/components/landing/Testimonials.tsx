@@ -119,7 +119,7 @@ export default function Testimonials() {
                     alt={t.name}
                     fill
                     className="object-cover"
-                    quality={82}
+                    quality={90}
                     sizes="48px"
                   />
                 </div>

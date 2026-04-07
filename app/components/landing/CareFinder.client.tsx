@@ -90,7 +90,7 @@ export default function CareFinder() {
           <div className="mt-3 text-xs text-slate-600">Enter your city or neighborhood to see nearby Evermore clinics.</div>
 
           <div className="mt-4 relative h-28 overflow-hidden rounded-2xl ring-1 ring-slate-200">
-            <Image src="/Pictures/locations-2.jpg" alt="Location visual" fill className="object-cover" quality={82} sizes="33vw" />
+            <Image src="/Pictures/locations-2.jpg" alt="Location visual" fill className="object-cover" quality={90} sizes="(max-width: 768px) 100vw, 33vw" />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/55 to-transparent" />
             <div className="absolute left-3 bottom-3 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-900 ring-1 ring-white/40">
               <MapPin className="h-4 w-4 text-blue-700" />
@@ -101,7 +101,7 @@ export default function CareFinder() {
 
         <div className="relative overflow-hidden rounded-2xl ring-1 ring-slate-200">
           <div className="relative h-[268px]">
-            <Image src="/Pictures/specialty-1.jpg" alt="Recommended care" fill className="object-cover" quality={82} sizes="33vw" />
+            <Image src="/Pictures/specialty-1.jpg" alt="Recommended care" fill className="object-cover" quality={90} sizes="(max-width: 768px) 100vw, 33vw" />
             <div className="absolute inset-0 bg-gradient-to-br from-blue-900/55 via-blue-700/35 to-cyan-500/15" />
           </div>
           <div className="absolute inset-0 p-4 text-white">

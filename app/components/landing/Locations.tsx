@@ -110,7 +110,7 @@ export default function Locations() {
             className="relative overflow-hidden rounded-3xl ring-1 ring-slate-200 shadow-[0_24px_80px_rgba(2,8,23,.12)]"
           >
             <div className="relative h-[260px]">
-              <Image src={x.img} alt={x.t} fill className="object-cover" quality={82} sizes="33vw" />
+              <Image src={x.img} alt={x.t} fill className="object-cover" quality={90} sizes="(max-width: 768px) 100vw, 33vw" />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-slate-950/10 to-transparent" />
             </div>
             <div className="absolute inset-x-0 bottom-0 p-6 text-white">
@@ -146,7 +146,7 @@ export default function Locations() {
             className="relative overflow-hidden rounded-3xl bg-white ring-1 ring-slate-200 shadow-[0_20px_60px_rgba(2,8,23,.08)]"
           >
             <div className="relative h-28">
-              <Image src={x.img} alt={x.k} fill className="object-cover" quality={82} sizes="33vw" />
+              <Image src={x.img} alt={x.k} fill className="object-cover" quality={90} sizes="(max-width: 768px) 100vw, 33vw" />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 to-transparent" />
             </div>
             <div className="p-5">

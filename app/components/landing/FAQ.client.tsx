@@ -155,8 +155,8 @@ export default function FAQ() {
                 alt="Evermore"
                 fill
                 className="object-cover"
-                quality={82}
-                sizes="50vw"
+                quality={90}
+                sizes="(max-width: 768px) 100vw, 50vw"
               />
               <div className="absolute inset-0 bg-gradient-to-br from-blue-900/55 via-blue-700/20 to-transparent" />
             </div>

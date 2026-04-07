@@ -84,8 +84,8 @@ export default function Doctors() {
                 alt="Evermore facility"
                 fill
                 className="object-cover"
-                quality={82}
-                sizes="50vw"
+                quality={90}
+                sizes="(max-width: 768px) 100vw, 50vw"
               />
               <div className="absolute inset-0 bg-gradient-to-r from-blue-900/60 via-blue-700/25 to-transparent" />
               <div className="absolute left-4 bottom-4 text-sm font-semibold">
@@ -103,7 +103,7 @@ export default function Doctors() {
             >
               {/* Bigger image area */}
               <div className="relative h-52 sm:h-56">
-                <Image src={d.img} alt={d.n} fill className="object-cover" quality={82} sizes="50vw" />
+                <Image src={d.img} alt={d.n} fill className="object-cover" quality={90} sizes="(max-width: 768px) 100vw, 50vw" />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950/55 via-transparent to-transparent" />
               </div>
 

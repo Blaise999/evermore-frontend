@@ -256,7 +256,7 @@ function deriveCareflexInvoices(invoices: Invoice[], payments: PaymentRow[]) {
 
 /** Local appointment types (keeps TS happy without changing ./_model) */
 type AppointmentStatus = "Pending approval" | "Confirmed" | "Completed" | "Cancelled";
-type PaymentMethodLabel = "Linked account" | "Pay later";
+type PaymentMethodLabel = "Linked account" | "CareFlex Credit";
 
 type PatientAppointment = {
   id: string;
@@ -805,7 +805,7 @@ function EmptyCard({
 }
 
 /* ---------------------------------- */
-/* Booking modal                      */
+/* Booking modal with OTP flow        */
 /* ---------------------------------- */
 
 function AppointmentBookingModal({
@@ -813,15 +813,45 @@ function AppointmentBookingModal({
   onClose,
   hasOverdue,
   linkedAccountLabel,
+  careflexAvailable,
+  careflexLimit,
   onPayLater,
   onPayFromLinkedAccount,
+  // OTP state (still needed for UI and verification)
+  otpStep,
+  setOtpStep,
+  otp,
+  setOtp,
+  otpError,
+  setOtpError,
+  bookingPayload,
+  setBookingPayload,
+  setToast,
+  setAppts,
+  setInvoices,
+  setTab,
 }: {
   open: boolean;
   onClose: () => void;
   hasOverdue: boolean;
   linkedAccountLabel: string | null;
+  careflexAvailable: number;
+  careflexLimit: number;
   onPayLater: (draft: AppointmentDraft) => void;
   onPayFromLinkedAccount: (draft: AppointmentDraft) => void;
+
+  otpStep: boolean;
+  setOtpStep: React.Dispatch<React.SetStateAction<boolean>>;
+  otp: string;
+  setOtp: React.Dispatch<React.SetStateAction<string>>;
+  otpError: string | null;
+  setOtpError: React.Dispatch<React.SetStateAction<string | null>>;
+  bookingPayload: any;
+  setBookingPayload: React.Dispatch<React.SetStateAction<any>>;
+  setToast: React.Dispatch<React.SetStateAction<Toast>>;
+  setAppts: React.Dispatch<React.SetStateAction<PatientAppointment[]>>;
+  setInvoices: React.Dispatch<React.SetStateAction<Invoice[]>>;
+  setTab: React.Dispatch<React.SetStateAction<"overview" | "appointments" | "records" | "billing">>;
 }) {
   useLockBodyScroll(open);
 
@@ -880,16 +910,52 @@ function AppointmentBookingModal({
   const [method, setMethod] = useState<PaymentMethodLabel>("Linked account");
   const [notes, setNotes] = useState("");
 
+  // Reset OTP state when modal closes
+
   React.useEffect(() => {
     setClinician(deptObj.clinicians[0]);
     setFacility(deptObj.facilities[0]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dept]);
 
   if (!open) return null;
 
-  const payLaterDisabled = hasOverdue;
+  const careflexCostExceedsLimit = deptObj.baseCost > careflexAvailable;
+  const payLaterDisabled = hasOverdue || careflexCostExceedsLimit;
   const canUseLinked = !!linkedAccountLabel;
+
+  const handleOtpVerify = async () => {
+    if (otp.length !== 6 || !bookingPayload) return;
+
+    setOtpError(null);
+
+    try {
+      const res = await apiPOST<any>(EP_BOOK_APPT, { ...bookingPayload, otp });
+
+      if (res?.ok) {
+        const rawAppt = res?.appointment;
+        const rawInv = res?.invoice;
+
+        if (rawAppt) {
+          const appt = normalizeApptAny(rawAppt);
+          setAppts((prev) => [appt, ...prev.filter((x) => x.id !== appt.id)]);
+        }
+
+        if (rawInv) {
+          const inv = normalizeInvoiceAny(rawInv);
+          setInvoices((prev) => [inv, ...prev.filter((x) => x.id !== inv.id)]);
+        }
+
+        setToast({ type: "success", message: "Appointment booked successfully!" });
+        setOtpStep(false);
+        onClose();
+        setTab("billing");
+      } else {
+        throw new Error(res?.message || "Verification failed");
+      }
+    } catch (e: any) {
+      setOtpError(e?.message || "Invalid or expired OTP. Please try again.");
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[94] flex items-center justify-center p-3 sm:p-4">
@@ -923,6 +989,7 @@ function AppointmentBookingModal({
 
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-5">
             <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+              {/* Left: Appointment details */}
               <div className="rounded-3xl bg-white p-5 ring-1 ring-slate-200">
                 <div className="text-sm font-semibold text-slate-900">1) Appointment details</div>
 
@@ -1023,6 +1090,7 @@ function AppointmentBookingModal({
                 />
               </div>
 
+              {/* Right Column - Payment + OTP */}
               <div className="rounded-3xl bg-white p-5 ring-1 ring-slate-200">
                 <div className="text-sm font-semibold text-slate-900">2) Payment</div>
 
@@ -1056,33 +1124,37 @@ function AppointmentBookingModal({
                   </button>
 
                   <button
-                    onClick={() => setMethod("Pay later")}
+                    onClick={() => setMethod("CareFlex Credit")}
                     disabled={payLaterDisabled}
                     className={cn(
                       "flex items-start justify-between gap-4 rounded-3xl p-4 ring-1 transition text-left",
                       payLaterDisabled
                         ? "bg-slate-50 ring-slate-200 opacity-70 cursor-not-allowed"
-                        : method === "Pay later"
+                        : method === "CareFlex Credit"
                           ? "bg-blue-50 ring-blue-200"
                           : "bg-white ring-slate-200 hover:bg-slate-50"
                     )}
                   >
                     <div>
-                      <div className="text-sm font-semibold text-slate-900">Pay later (invoice)</div>
-                      <div className="mt-1 text-xs text-slate-600">Backend creates an invoice in Billing.</div>
+                      <div className="text-sm font-semibold text-slate-900">CareFlex Credit</div>
+                      <div className="mt-1 text-xs text-slate-600">
+                        Use your CareFlex credit line. Available: <span className="font-bold">£{careflexAvailable.toFixed(2)}</span> of £{careflexLimit.toFixed(2)}
+                      </div>
                       {payLaterDisabled ? (
                         <div className="mt-2 text-xs font-semibold text-amber-700">
-                          Pay later is disabled because you have an overdue balance.
+                          {hasOverdue
+                            ? "CareFlex is disabled — you have an overdue balance."
+                            : `This appointment costs £${deptObj.baseCost} but you only have £${careflexAvailable.toFixed(2)} available. Please make a payment first.`}
                         </div>
                       ) : null}
                     </div>
                     <span
                       className={cn(
                         "rounded-full px-3 py-1 text-xs font-semibold ring-1",
-                        payLaterDisabled ? "bg-white text-slate-400 ring-slate-200" : "bg-white text-blue-700 ring-blue-200"
+                        payLaterDisabled ? "bg-white text-slate-400 ring-slate-200" : "bg-emerald-50 text-emerald-700 ring-emerald-200"
                       )}
                     >
-                      Invoice
+                      Credit
                     </span>
                   </button>
                 </div>
@@ -1118,7 +1190,7 @@ function AppointmentBookingModal({
                         paymentMethod: method,
                       };
 
-                      if (method === "Pay later") {
+                      if (method === "CareFlex Credit") {
                         if (payLaterDisabled) return;
                         onPayLater(draft);
                         return;
@@ -1127,21 +1199,68 @@ function AppointmentBookingModal({
                       if (!canUseLinked) return;
                       onPayFromLinkedAccount(draft);
                     }}
-                    disabled={(method === "Linked account" && !canUseLinked) || (method === "Pay later" && payLaterDisabled)}
+                    disabled={(method === "Linked account" && !canUseLinked) || (method === "CareFlex Credit" && payLaterDisabled)}
                     className={cn(
                       "ml-auto rounded-2xl px-4 py-2.5 text-sm font-semibold text-white",
-                      (method === "Linked account" && !canUseLinked) || (method === "Pay later" && payLaterDisabled)
+                      (method === "Linked account" && !canUseLinked) || (method === "CareFlex Credit" && payLaterDisabled)
                         ? "bg-blue-600/60"
                         : "bg-blue-600 hover:bg-blue-700"
                     )}
                   >
-                    {method === "Pay later" ? "Book & create invoice" : "Continue to payment"}
+                    {method === "CareFlex Credit" ? "Book with CareFlex" : "Pay & Book Appointment"}
                   </button>
                 </div>
 
                 {method === "Linked account" && !canUseLinked ? (
                   <div className="mt-3 text-xs font-semibold text-amber-700">Link an account first to pay now.</div>
                 ) : null}
+
+                {/* OTP Verification UI */}
+                {otpStep && (
+                  <div className="mt-6 rounded-3xl bg-white p-5 ring-1 ring-slate-200">
+                    <div className="text-sm font-semibold text-slate-900">Enter 6-digit code</div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      We sent a verification code to your email. It expires in 10 minutes.
+                    </div>
+
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={otp}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "");
+                        setOtp(val);
+                        if (otpError) setOtpError(null);
+                      }}
+                      className="mt-4 w-full rounded-2xl bg-white px-6 py-5 text-center text-4xl font-mono tracking-[12px] ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      placeholder="123456"
+                      autoFocus
+                    />
+
+                    {otpError && <div className="mt-3 text-xs font-semibold text-rose-600">{otpError}</div>}
+
+                    <div className="mt-6 flex gap-3">
+                      <button
+                        onClick={() => {
+                          setOtpStep(false);
+                          setOtp("");
+                          setOtpError(null);
+                        }}
+                        className="flex-1 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                      >
+                        ← Back
+                      </button>
+                      <button
+                        onClick={handleOtpVerify}
+                        disabled={otp.length !== 6}
+                        className="flex-1 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-blue-400"
+                      >
+                        Verify &amp; Book
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1150,7 +1269,6 @@ function AppointmentBookingModal({
     </div>
   );
 }
-
 /* ---------------------------------- */
 /* Backend paths used by Dashboard     */
 /* ---------------------------------- */
@@ -1187,6 +1305,7 @@ export default function DashboardClient() {
   const [profile, setProfile] = useState<PatientProfile | null>(null);
   const [records, setRecords] = useState<HospitalRecord[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [ailmentSpend, setAilmentSpend] = useState<Record<string, { total: number; covered: number; outstanding: number }>>({});
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [appts, setAppts] = useState<PatientAppointment[]>([]);
   const [linkedAccount, setLinkedAccount] = useState<{ label: string } | null>(null);
@@ -1202,6 +1321,12 @@ export default function DashboardClient() {
 
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [approvalSubject, setApprovalSubject] = useState<ApprovalSubject | null>(null);
+
+  // OTP state (lifted up so handlers + modal can share it)
+  const [otpStep, setOtpStep] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [bookingPayload, setBookingPayload] = useState<any>(null);
 
   // billing details
   const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
@@ -1249,7 +1374,7 @@ export default function DashboardClient() {
                 eligibilityScore: Number(rawAccount?.creditScore ?? rawAccount?.credit_score ?? 720),
                 careflexLimit: (() => {
                   const n = Number(rawAccount?.creditLimit ?? rawAccount?.credit_limit ?? rawUser.careflexLimit ?? 0);
-                  return Number.isFinite(n) && n > 0 ? n : 5000;
+                  return Number.isFinite(n) && n > 0 ? n : 1000;
                 })(),
                 careflexTermsDays: 30,
               } as any);
@@ -1346,6 +1471,24 @@ export default function DashboardClient() {
             setLinkedAccount({ label: `Evermore ${String(rawAccount.currency)} Account` });
           }
 
+          // Parse ailment spending data
+          if (dash?.ailmentSpend && typeof dash.ailmentSpend === "object") {
+            setAilmentSpend(dash.ailmentSpend);
+          } else {
+            // Compute from invoices locally
+            const aspend: Record<string, { total: number; covered: number; outstanding: number }> = {};
+            const rawInvs = Array.isArray(dash?.invoices) ? dash.invoices : [];
+            for (const inv of rawInvs) {
+              if (String(inv?.status ?? "").toLowerCase() === "void") continue;
+              const ailment = inv?.ailment || "General";
+              if (!aspend[ailment]) aspend[ailment] = { total: 0, covered: 0, outstanding: 0 };
+              aspend[ailment].total += Number(inv?.total || 0);
+              aspend[ailment].covered += Number(inv?.coveredAmount || 0);
+              aspend[ailment].outstanding = aspend[ailment].total - aspend[ailment].covered;
+            }
+            setAilmentSpend(aspend);
+          }
+
           if (dash?.pendingRefByInvoiceId && typeof dash.pendingRefByInvoiceId === "object") {
             setPendingRefByInvoiceId(dash.pendingRefByInvoiceId);
           }
@@ -1410,7 +1553,7 @@ export default function DashboardClient() {
 
   const careflexLimit = useMemo(() => {
     const n = Number((profile as any)?.careflexLimit ?? 0);
-    return Number.isFinite(n) && n > 0 ? n : 5000;
+    return Number.isFinite(n) && n > 0 ? n : 1000;
   }, [profile]);
 
   const careflexAvailable = useMemo(() => {
@@ -1590,7 +1733,6 @@ export default function DashboardClient() {
 
     return { requestRef: paymentRef || "OK" };
   }
-
   async function bookPayLater(d: AppointmentDraft) {
     try {
       const payload = {
@@ -1611,6 +1753,16 @@ export default function DashboardClient() {
 
       const res = await apiPOST<any>(EP_BOOK_APPT, payload);
 
+      // NEW: Handle OTP flow from backend
+      if (res?.requiresOtp) {
+        setBookingPayload(payload);   // Save payload for second call
+        setOtpStep(true);
+        setOtp("");
+        setOtpError(null);
+        return;                       // Stop here - wait for OTP
+      }
+
+      // Original success path (no OTP required)
       const rawAppt = res?.appointment;
       const rawInv = res?.invoice;
 
@@ -1668,6 +1820,16 @@ export default function DashboardClient() {
 
     const res = await apiPOST<any>(EP_BOOK_APPT, payload);
 
+    // NEW: Handle OTP flow from backend
+    if (res?.requiresOtp) {
+      setBookingPayload(payload);
+      setOtpStep(true);
+      setOtp("");
+      setOtpError(null);
+      return { requestRef: "pending-otp" };
+    }
+
+    // Original success path (OTP not required)
     const paymentRef = res?.paymentRef || res?.requestRef || res?.ref || res?.request_reference || res?.txRef || "";
     const rawAppt = res?.appointment;
     const rawInv = res?.invoice;
@@ -1767,13 +1929,32 @@ export default function DashboardClient() {
       return;
     }
     setOpenInvoiceId(invoiceId);
-    setInvoiceDetails(null);
     setDetailsBusy(true);
+
+    // Use already-loaded invoice data (no extra backend call needed)
+    const localInv = invoices.find((x) => {
+      const xid = String((x as any)._id || (x as any).id || "");
+      return xid === invoiceId;
+    });
+
+    if (localInv) {
+      setInvoiceDetails({ ok: true, invoice: localInv });
+      setDetailsBusy(false);
+      return;
+    }
+
+    // Fallback: try backend (but don't block on failure)
     try {
       const res = await apiGET<any>(EP_INVOICE_DETAILS(invoiceId));
       setInvoiceDetails(res);
-    } catch (e: any) {
-      setToast({ type: "error", message: e?.message || "Failed to load invoice details." });
+    } catch {
+      // Still show what we have from invoicesView
+      const viewInv = invoicesView.find((x) => x.id === invoiceId);
+      if (viewInv) {
+        setInvoiceDetails({ ok: true, invoice: viewInv });
+      } else {
+        setInvoiceDetails(null);
+      }
     } finally {
       setDetailsBusy(false);
     }
@@ -1805,31 +1986,176 @@ export default function DashboardClient() {
     setToast({ type: "success", message: "Record downloaded." });
   }
 
-  async function downloadInvoicePdf(invoiceId: string, title?: string) {
+  async function downloadInvoicePdf(invoiceId: string, _title?: string) {
     if (!isValidId(invoiceId)) {
       setToast({ type: "error", message: "Invoice ID missing — can't download." });
       return;
     }
 
-    const r = await fetch(EP_INVOICE_PDF(invoiceId), { method: "GET" });
-    if (!r.ok) {
-      setToast({ type: "error", message: "Invoice download failed." });
+    // Find the invoice from local data
+    const inv = invoices.find((x) => {
+      const xid = String((x as any)._id || (x as any).id || "");
+      return xid === invoiceId;
+    }) as any;
+
+    if (!inv) {
+      setToast({ type: "error", message: "Invoice not found." });
       return;
     }
 
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
+    const patientName = String((profile as any)?.fullName || (profile as any)?.name || "Patient");
+    const patientEmail = String((profile as any)?.email || "");
+    const patientId = String((profile as any)?.patientId || (profile as any)?.hospitalId || "");
 
-    const safeTitle = String(title || "invoice").replace(/[^\w\-]+/g, "_").slice(0, 60);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${safeTitle}-${invoiceId}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    const invoiceNo = inv.invoiceNo || inv.title || `INV-${invoiceId.slice(-8)}`;
+    const status = String(inv.status || "Unpaid");
+    const issuedAt = inv.issuedAt || inv.createdISO || "";
+    const dueDate = inv.dueDate || inv.dueISO || "";
+    const paidAt = inv.paidAt || "";
+    const ailment = inv.ailment || "";
+    const total = Number(inv.total ?? inv.amount ?? 0);
+    const subtotal = Number(inv.subtotal ?? total);
+    const tax = Number(inv.tax ?? 0);
+    const covered = Number(inv.coveredAmount ?? 0);
+    const balanceDue = Math.max(0, total - covered);
+    const currency = inv.currency || "GBP";
+    const items = Array.isArray(inv.items) ? inv.items : [];
 
-    setToast({ type: "success", message: "Invoice downloaded." });
+    const fmtD = (iso: string) => {
+      if (!iso) return "—";
+      try { return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); } catch { return "—"; }
+    };
+    const fmtM = (n: number) => `£${Number(n || 0).toFixed(2)}`;
+
+    const itemRows = items.length > 0
+      ? items.map((it: any, i: number) => `
+        <tr style="${i % 2 === 0 ? 'background:#F8FAFC;' : ''}">
+          <td style="padding:10px 14px;font-size:13px;">${it.description || "Item"}<br><span style="color:#94A3B8;font-size:11px;">${it.code || ""}</span></td>
+          <td style="padding:10px 14px;text-align:center;font-size:13px;">${it.qty || 1}</td>
+          <td style="padding:10px 14px;text-align:right;font-size:13px;">${fmtM(it.unitPrice || 0)}</td>
+          <td style="padding:10px 14px;text-align:right;font-size:13px;font-weight:700;">${fmtM(it.amount || 0)}</td>
+        </tr>`).join("")
+      : `<tr><td colspan="4" style="padding:20px;text-align:center;color:#94A3B8;font-size:13px;">Consultation — ${fmtM(total)}</td></tr>`;
+
+    const statusColor = status.toLowerCase().includes("paid") ? "#059669" : status.toLowerCase().includes("overdue") ? "#DC2626" : "#D97706";
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Invoice ${invoiceNo} — Evermore Hospitals</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#fff; color:#0F172A; }
+  @page { size:A4; margin:12mm; }
+  @media print { body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; } .no-print { display:none !important; } }
+</style></head>
+<body>
+  <!-- Print button -->
+  <div class="no-print" style="position:fixed;top:20px;right:20px;z-index:99;display:flex;gap:8px;">
+    <button onclick="window.print()" style="padding:10px 24px;background:#1E40AF;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;">Save as PDF</button>
+    <button onclick="window.close()" style="padding:10px 24px;background:#F1F5F9;color:#334155;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;">Close</button>
+  </div>
+
+  <div style="max-width:680px;margin:40px auto;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden;">
+    <!-- Header -->
+    <div style="background:#1E40AF;color:#fff;padding:28px 32px;position:relative;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">Evermore Hospitals</div>
+          <div style="margin-top:4px;font-size:11px;opacity:0.65;">Excellence in Patient Care</div>
+          <div style="margin-top:8px;font-size:11px;opacity:0.5;">145 Harley Street, London W1G 6BJ</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="display:inline-block;padding:4px 14px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;background:${statusColor};color:#fff;">${status}</div>
+          <div style="margin-top:10px;font-size:10px;opacity:0.5;letter-spacing:1px;">INVOICE</div>
+          <div style="margin-top:2px;font-size:14px;font-weight:700;font-family:monospace;">${invoiceNo}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:28px 32px;">
+      <!-- Two column info -->
+      <div style="display:flex;gap:24px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#94A3B8;font-weight:700;">Bill To</div>
+          <div style="margin-top:8px;font-size:14px;font-weight:700;">${patientName}</div>
+          <div style="font-size:12px;color:#64748B;margin-top:2px;">${patientEmail}</div>
+          <div style="font-size:11px;color:#94A3B8;margin-top:2px;font-family:monospace;">ID: ${patientId}</div>
+        </div>
+        <div style="flex:1;min-width:200px;text-align:right;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#94A3B8;font-weight:700;">Details</div>
+          <div style="margin-top:8px;font-size:12px;color:#475569;">
+            <div><span style="color:#94A3B8;">Issued:</span> <strong>${fmtD(issuedAt)}</strong></div>
+            <div style="margin-top:3px;"><span style="color:#94A3B8;">Due:</span> <strong>${fmtD(dueDate)}</strong></div>
+            ${paidAt ? `<div style="margin-top:3px;"><span style="color:#94A3B8;">Paid:</span> <strong style="color:#059669;">${fmtD(paidAt)}</strong></div>` : ""}
+          </div>
+        </div>
+      </div>
+
+      ${ailment ? `
+      <!-- Ailment -->
+      <div style="margin-top:20px;padding:10px 16px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#2563EB;font-weight:700;">Diagnosis / Ailment</div>
+        <div style="margin-top:4px;font-size:13px;color:#1E40AF;font-weight:500;">${ailment}</div>
+      </div>` : ""}
+
+      <!-- Line Items -->
+      <table style="width:100%;border-collapse:collapse;margin-top:20px;border:1px solid #E2E8F0;border-radius:10px;overflow:hidden;">
+        <thead>
+          <tr style="background:#1E40AF;">
+            <th style="padding:10px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;font-weight:700;">Description</th>
+            <th style="padding:10px 14px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;font-weight:700;">Qty</th>
+            <th style="padding:10px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;font-weight:700;">Price</th>
+            <th style="padding:10px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;font-weight:700;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>${itemRows}</tbody>
+      </table>
+
+      <!-- Totals -->
+      <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+        <div style="width:260px;">
+          <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#64748B;">
+            <span>Subtotal</span><span>${fmtM(subtotal)}</span>
+          </div>
+          ${tax > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#64748B;">
+            <span>Tax / VAT</span><span>${fmtM(tax)}</span>
+          </div>` : ""}
+          ${covered > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#059669;">
+            <span>CareFlex Covered</span><span>−${fmtM(covered)}</span>
+          </div>` : ""}
+          <div style="margin-top:4px;padding:10px 14px;background:#1E40AF;border-radius:8px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:rgba(255,255,255,0.8);font-size:13px;font-weight:600;">Total Due</span>
+            <span style="color:#fff;font-size:18px;font-weight:800;">${fmtM(balanceDue)}</span>
+          </div>
+        </div>
+      </div>
+
+      ${covered > 0 ? `
+      <div style="margin-top:16px;padding:10px 16px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;font-size:12px;color:#166534;">
+        <strong>${fmtM(covered)}</strong> of this invoice was covered by your CareFlex credit line.
+      </div>` : ""}
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:16px 32px;background:#F8FAFC;border-top:1px solid #E2E8F0;text-align:center;">
+      <div style="font-size:11px;color:#94A3B8;">Thank you for choosing Evermore Hospitals. This invoice is valid without signature.</div>
+      <div style="margin-top:4px;font-size:10px;color:#CBD5E1;">+44 20 7946 0958 · billing@evermore.health · Invoice ${invoiceNo}</div>
+    </div>
+  </div>
+</body></html>`;
+
+    // Open in new window and print
+    const win = window.open("", "_blank", "width=800,height=900");
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      // Auto-trigger print after render
+      win.onload = () => { win.focus(); win.print(); };
+      // Fallback if onload doesn't fire
+      setTimeout(() => { try { win.focus(); win.print(); } catch {} }, 600);
+    } else {
+      setToast({ type: "error", message: "Popup blocked. Please allow popups for this site." });
+    }
   }
 
   async function messageCareTeam(recordId: string) {
@@ -1871,6 +2197,34 @@ export default function DashboardClient() {
           </div>
         </div>
       ) : null}
+
+      {/* Greeting + Health Summary */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900" style={{ fontFamily: "'DM Serif Display', Georgia, serif" }}>
+          Welcome back{(profile as any)?.fullName ? `, ${String((profile as any).fullName).split(" ")[0]}` : ""}
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">Here&apos;s your health overview for today.</p>
+
+        {/* Health Info Strip */}
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="rounded-2xl bg-blue-50 p-3 ring-1 ring-blue-100">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-blue-500">Patient ID</div>
+            <div className="mt-1 text-sm font-bold text-slate-900 font-mono">{(profile as any)?.patientId ?? "—"}</div>
+          </div>
+          <div className="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-rose-500">Blood Group</div>
+            <div className="mt-1 text-sm font-bold text-slate-900">{(profile as any)?.bloodType ?? "Not set"}</div>
+          </div>
+          <div className="rounded-2xl bg-amber-50 p-3 ring-1 ring-amber-100">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-600">Allergies</div>
+            <div className="mt-1 text-sm font-bold text-slate-900 truncate">{Array.isArray((profile as any)?.allergies) && (profile as any).allergies.length > 0 ? (profile as any).allergies.join(", ") : "None recorded"}</div>
+          </div>
+          <div className="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600">CareFlex</div>
+            <div className="mt-1 text-sm font-bold text-slate-900">{fmtMoney(careflexAvailable, "GBP")} available</div>
+          </div>
+        </div>
+      </div>
 
       {/* Tabs */}
       <div className="flex flex-wrap items-center gap-2">
@@ -2078,6 +2432,41 @@ export default function DashboardClient() {
             </div>
           </div>
 
+
+            {/* Active Conditions & Spending */}
+            {Object.keys(ailmentSpend).length > 0 && (
+              <div className="rounded-3xl bg-white p-6 ring-1 ring-slate-200">
+                <div className="flex items-center gap-2 mb-4">
+                  <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  </svg>
+                  <div className="text-sm font-semibold text-slate-900">Conditions & Treatment Costs</div>
+                </div>
+                <div className="space-y-3">
+                  {Object.entries(ailmentSpend)
+                    .sort(([,a],[,b]) => (b as any).total - (a as any).total)
+                    .slice(0, 6)
+                    .map(([ailment, data]: [string, any]) => (
+                    <div key={ailment} className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-sm font-semibold text-slate-800">{ailment}</span>
+                        <span className="text-sm font-bold text-slate-900">{fmtMoney(data.total, "GBP")}</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500" style={{
+                          width: `${Math.min(100, (data.covered / (data.total || 1)) * 100)}%`,
+                          background: data.outstanding > 0 ? "linear-gradient(90deg, #F59E0B, #FBBF24)" : "linear-gradient(90deg, #10B981, #34D399)",
+                        }} />
+                      </div>
+                      <div className="mt-1 flex justify-between text-[10px] text-slate-400">
+                        <span>Covered: {fmtMoney(data.covered, "GBP")}</span>
+                        <span>{data.outstanding > 0 ? `Outstanding: ${fmtMoney(data.outstanding, "GBP")}` : "Fully covered"}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           {/* Right */}
           <div className="grid gap-4">
             <div className="rounded-3xl bg-white p-6 ring-1 ring-slate-200 shadow-[0_22px_70px_rgba(2,8,23,.10)]">
@@ -2199,7 +2588,7 @@ export default function DashboardClient() {
 
                   {hasOverdue ? (
                     <div className="mt-3 text-xs font-semibold text-amber-700">
-                      Overdue balance detected: Pay later is restricted for new bookings until overdue is cleared.
+                      Overdue balance detected: CareFlex Credit is restricted for new bookings until overdue is cleared.
                     </div>
                   ) : null}
                 </div>
@@ -2336,14 +2725,40 @@ export default function DashboardClient() {
       ) : null}
 
       {/* Book appointment modal */}
-      <AppointmentBookingModal
-        open={bookOpen}
-        onClose={() => setBookOpen(false)}
-        hasOverdue={hasOverdue}
-        linkedAccountLabel={linkedAccount?.label ?? null}
-        onPayLater={bookPayLater}
-        onPayFromLinkedAccount={bookFromLinkedAccount}
-      />
+     {/* Book appointment modal */}
+<AppointmentBookingModal
+  open={bookOpen}
+  onClose={() => {
+    setBookOpen(false);
+    
+    // ✅ Reset OTP state safely in the parent
+    setOtpStep(false);
+    setOtp("");
+    setOtpError(null);
+    setBookingPayload(null);
+  }}
+  hasOverdue={hasOverdue}
+  linkedAccountLabel={linkedAccount?.label ?? null}
+  careflexAvailable={careflexAvailable}
+  careflexLimit={careflexLimit}
+  onPayLater={bookPayLater}
+  onPayFromLinkedAccount={bookFromLinkedAccount}
+  
+  // Keep these props (needed for OTP screen inside modal)
+  otpStep={otpStep}
+  setOtpStep={setOtpStep}
+  otp={otp}
+  setOtp={setOtp}
+  otpError={otpError}
+  setOtpError={setOtpError}
+  bookingPayload={bookingPayload}
+  setBookingPayload={setBookingPayload}
+  
+  setToast={setToast}
+  setAppts={setAppts}
+  setInvoices={setInvoices}
+  setTab={setTab}
+/>
 
       {/* Approval flow modal */}
       {approvalOpen && approvalSubject ? (
@@ -2406,7 +2821,7 @@ export default function DashboardClient() {
                       }}
                       className="rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50"
                     >
-                      Download PDF
+                      Print / Save PDF
                     </button>
 
                     <button

@@ -169,7 +169,7 @@ export default function StickyHeader() {
                   fill
                   className="object-contain"
                   sizes="(max-width: 768px) 52vw, (max-width: 1200px) 220px, 260px"
-                />
+                 quality={90} />
               </div>
             </Link>
 
@@ -311,7 +311,7 @@ export default function StickyHeader() {
                             src={active.featuredImg}
                             alt={active.featuredTitle}
                             fill
-                            quality={82}
+                            quality={90}
                             className="object-cover"
                             sizes="40vw"
                           />
@@ -392,7 +392,7 @@ export default function StickyHeader() {
           <div className="fixed inset-y-0 right-0 z-[86] w-[min(420px,100%)] bg-white shadow-[0_40px_120px_rgba(2,8,23,.25)]">
             <div className="flex items-center justify-between px-4 py-4 ring-1 ring-slate-200">
               <div className="relative h-[44px] w-[160px]">
-                <Image src="/Pictures/Logos.png" alt="Evermore Hospitals" fill className="object-contain" sizes="160px" />
+                <Image src="/Pictures/Logos.png" alt="Evermore Hospitals" fill className="object-contain" sizes="160px"  quality={90} />
               </div>
               <button
                 onClick={() => setOpenMobile(false)}
@@ -414,7 +414,7 @@ export default function StickyHeader() {
 
                     <div className="px-4 pb-3">
                       <div className="relative h-28 overflow-hidden rounded-2xl ring-1 ring-slate-200">
-                        <Image src={n.featuredImg} alt={n.featuredTitle} fill className="object-cover" quality={82} sizes="90vw" />
+                        <Image src={n.featuredImg} alt={n.featuredTitle} fill className="object-cover" quality={90} sizes="90vw" />
                         <div className="absolute inset-0 bg-gradient-to-br from-blue-900/65 via-blue-700/30 to-cyan-500/15" />
                         <div className="absolute inset-0 p-3 text-white">
                           <div className="text-xs font-semibold opacity-90">{n.accent}</div>

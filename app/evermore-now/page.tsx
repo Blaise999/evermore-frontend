@@ -116,7 +116,7 @@ function Modal({
                     sizes="(max-width: 768px) 100vw, 768px"
                     className="object-cover"
                     priority={false}
-                  />
+                   quality={85} />
                 </div>
               </div>
             ) : null}
@@ -316,7 +316,7 @@ export default function EvermoreNowPage() {
                     sizes="(max-width: 1024px) 100vw, 520px"
                     className="object-cover"
                     priority
-                  />
+                   quality={85} />
                   <div className="absolute inset-0 bg-gradient-to-b from-slate-950/10 via-slate-950/0 to-slate-950/35" />
                   <div className="absolute left-4 top-4 flex flex-wrap gap-2">
                     <Pill>{featured.category}</Pill>
@@ -394,7 +394,7 @@ export default function EvermoreNowPage() {
                       fill
                       sizes="(max-width: 1024px) 100vw, 420px"
                       className="object-cover"
-                    />
+                     quality={85} />
                     <div className="absolute inset-0 bg-gradient-to-b from-slate-950/0 via-slate-950/0 to-slate-950/25" />
                     <div className="absolute left-4 top-4 flex flex-wrap gap-2">
                       <Pill>{p.category}</Pill>

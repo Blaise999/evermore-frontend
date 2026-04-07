@@ -160,8 +160,8 @@ export default function PortalDemo() {
               alt="Portal"
               fill
               className="object-cover"
-              quality={82}
-              sizes="33vw"
+              quality={90}
+              sizes="(max-width: 768px) 100vw, 33vw"
             />
             <div className="absolute inset-0 bg-gradient-to-br from-blue-900/65 via-blue-700/40 to-cyan-500/15" />
           </div>
@@ -257,8 +257,8 @@ export default function PortalDemo() {
               alt="Appointments"
               fill
               className="object-cover"
-              quality={82}
-              sizes="50vw"
+              quality={90}
+              sizes="(max-width: 768px) 100vw, 50vw"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/55 via-slate-950/20 to-transparent" />
           </div>
@@ -363,8 +363,8 @@ export default function PortalDemo() {
               alt="Insurance"
               fill
               className="object-cover"
-              quality={82}
-              sizes="50vw"
+              quality={90}
+              sizes="(max-width: 768px) 100vw, 50vw"
             />
             <div className="absolute inset-0 bg-gradient-to-br from-blue-900/70 via-blue-700/35 to-cyan-500/15" />
           </div>
@@ -477,8 +477,8 @@ export default function PortalDemo() {
               alt="Records sharing"
               fill
               className="object-cover"
-              quality={82}
-              sizes="50vw"
+              quality={90}
+              sizes="(max-width: 768px) 100vw, 50vw"
             />
             <div className="absolute inset-0 bg-gradient-to-br from-slate-950/80 via-slate-950/35 to-blue-900/15" />
           </div>

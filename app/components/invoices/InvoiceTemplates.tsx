@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React from "react";
 
 type InvoiceItem = {
   code?: string;
   description: string;
+  ailment?: string;
   qty: number;
   unitPrice: number;
   amount: number;
@@ -13,16 +14,19 @@ type InvoiceItem = {
 export type Invoice = {
   _id: string;
   invoiceNo: string;
-  currency: string; // "EUR"
-  status: "paid" | "issued" | "overdue";
-  issuedAt: string; // ISO
-  dueDate: string; // ISO
-  paidAt?: string; // ISO
+  currency: string;
+  status: "paid" | "issued" | "overdue" | "partial" | "void";
+  issuedAt: string;
+  dueDate: string;
+  paidAt?: string;
+  ailment?: string;
+  diagnosis?: string;
   items: InvoiceItem[];
   subtotal: number;
   tax: number;
   total: number;
   coveredAmount?: number;
+  careflexApplied?: number;
 };
 
 export type InvoiceBranding = {
@@ -33,64 +37,47 @@ export type InvoiceBranding = {
   supportEmail?: string;
   supportPhone?: string;
   footerNote?: string;
-
-  // optional, if you have them
   patientName?: string;
   patientEmail?: string;
-  billToLabel?: string; // "Bill To"
-  facilityLabel?: string; // "Facility"
+  patientId?: string;
+  billToLabel?: string;
+  facilityLabel?: string;
   facilityName?: string;
 };
 
 function safeDate(iso?: string) {
   if (!iso) return "—";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-  });
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-GB", { year: "numeric", month: "short", day: "2-digit" });
 }
 
 function safeMoney(currency: string, n: number) {
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(
+    return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(
       Number.isFinite(n) ? n : 0
     );
   } catch {
-    return `${(Number.isFinite(n) ? n : 0).toFixed(2)} ${currency}`;
+    return `£${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
   }
 }
 
-function statusTone(status: Invoice["status"]) {
-  if (status === "paid")
-    return "bg-emerald-500/12 text-emerald-200 ring-1 ring-emerald-400/20";
-  if (status === "overdue")
-    return "bg-rose-500/12 text-rose-200 ring-1 ring-rose-400/20";
-  return "bg-sky-500/12 text-sky-200 ring-1 ring-sky-400/20";
-}
+const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+  paid: { bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500", label: "Paid" },
+  issued: { bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500", label: "Unpaid" },
+  overdue: { bg: "bg-red-50", text: "text-red-700", dot: "bg-red-500", label: "Overdue" },
+  partial: { bg: "bg-blue-50", text: "text-blue-700", dot: "bg-blue-500", label: "Partial" },
+  void: { bg: "bg-gray-100", text: "text-gray-500", dot: "bg-gray-400", label: "Void" },
+};
 
-function statusDot(status: Invoice["status"]) {
-  if (status === "paid") return "bg-emerald-400";
-  if (status === "overdue") return "bg-rose-400";
-  return "bg-sky-400";
-}
-
-function shortId(id: string) {
-  const s = String(id || "");
-  if (s.length <= 10) return s;
-  return `${s.slice(0, 6)}…${s.slice(-4)}`;
-}
-
-function clampHex(hex?: string) {
-  const s = String(hex || "").trim();
-  if (/^#([0-9a-fA-F]{3}){1,2}$/.test(s)) return s;
-  return "#22c55e";
-}
-
-function sum(items: InvoiceItem[]) {
-  return items.reduce((acc, it) => acc + (Number(it.amount) || 0), 0);
+function StatusBadge({ status }: { status: string }) {
+  const cfg = statusConfig[status] || statusConfig.issued;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${cfg.bg} ${cfg.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
 }
 
 export function InvoiceTemplate({
@@ -100,283 +87,226 @@ export function InvoiceTemplate({
   invoice: Invoice;
   branding: InvoiceBranding;
 }) {
-  const accent = clampHex(branding.accentHex);
-
-  const computed = useMemo(() => {
-    const lineSum = sum(invoice.items || []);
-    const subtotal = Number.isFinite(invoice.subtotal) ? invoice.subtotal : lineSum;
-    const tax = Number.isFinite(invoice.tax) ? invoice.tax : 0;
-    const total = Number.isFinite(invoice.total) ? invoice.total : subtotal + tax;
-
-    return {
-      subtotal,
-      tax,
-      total,
-      lineSum,
-    };
-  }, [invoice]);
-
-  const dueBadge =
-    invoice.status !== "paid"
-      ? `${invoice.status === "overdue" ? "Overdue" : "Due"}: ${safeDate(
-          invoice.dueDate
-        )}`
-      : `Paid: ${safeDate(invoice.paidAt)}`;
+  const cur = invoice.currency || "GBP";
+  const coveredAmount = Number(invoice.coveredAmount) || 0;
+  const balanceDue = Math.max(0, (invoice.total || 0) - coveredAmount);
+  const brandColor = branding.accentHex || "#1E3A8A";
 
   return (
-    <div className="mx-auto w-full max-w-4xl">
-      {/* Outer paper */}
-      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0f14] text-white shadow-[0_16px_50px_rgba(0,0,0,.55)] print:rounded-none print:border-none print:bg-white print:text-black print:shadow-none">
-        {/* subtle accent glow */}
-        <div
-          className="pointer-events-none absolute -top-24 right-[-140px] h-[320px] w-[320px] rounded-full opacity-30 blur-3xl print:hidden"
-          style={{
-            background: `radial-gradient(circle at 30% 30%, ${accent}, transparent 60%)`,
-          }}
-        />
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,.06),transparent_35%)] print:hidden" />
-        <div className="pointer-events-none absolute inset-0 opacity-[0.03] [background-image:radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px] print:hidden" />
-
-        {/* Header */}
-        <div className="relative border-b border-white/10 px-6 py-6 print:border-black/10">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-            {/* Brand */}
-            <div className="flex items-center gap-4">
-              {branding.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={branding.logoUrl}
-                  alt={branding.brandName}
-                  className="h-12 w-12 rounded-2xl object-cover ring-1 ring-white/10 print:ring-black/10"
-                />
-              ) : (
-                <div
-                  className="h-12 w-12 rounded-2xl ring-1 ring-white/10 print:ring-black/10"
-                  style={{ background: accent }}
-                />
-              )}
-
-              <div>
-                <div className="flex items-center gap-2">
-                  <div className="text-xl font-semibold tracking-tight print:text-black">
-                    {branding.brandName}
-                  </div>
-
-                  <span
-                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold ${statusTone(
-                      invoice.status
-                    )} print:border print:border-black/20 print:bg-white`}
-                  >
-                    <span className={`h-2 w-2 rounded-full ${statusDot(invoice.status)}`} />
-                    {invoice.status.toUpperCase()}
-                  </span>
-                </div>
-
-                <div className="mt-1 text-xs text-white/60 print:text-black/60">
-                  {branding.addressLines?.length
-                    ? branding.addressLines.join(" • ")
-                    : "Evermore Billing"}
-                </div>
-              </div>
-            </div>
-
-            {/* Invoice Meta */}
-            <div className="sm:text-right">
-              <div className="text-xs text-white/60 print:text-black/60">Invoice</div>
-              <div className="mt-1 text-2xl font-semibold tracking-tight print:text-black">
-                {invoice.invoiceNo}
-              </div>
-
-              <div className="mt-2 inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80 print:border-black/20 print:bg-white print:text-black/70">
-                {dueBadge}
-              </div>
-
-              <div className="mt-2 text-[11px] text-white/50 print:text-black/50">
-                Reference: {shortId(invoice._id)}
-              </div>
+    <div className="receipt max-w-[680px] mx-auto" id="invoice-printable">
+      {/* ===== Header ===== */}
+      <div className="receipt-header relative" style={{ background: brandColor }}>
+        {/* Subtle pattern overlay */}
+        <div className="absolute inset-0 opacity-[0.03]" style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23fff' fill-opacity='1'%3E%3Ccircle cx='30' cy='30' r='1.5'/%3E%3C/g%3E%3C/svg%3E")`,
+        }} />
+        <div className="relative flex justify-between items-start">
+          <div>
+            <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: "Georgia, serif" }}>
+              {branding.brandName || "Evermore Hospitals"}
+            </h1>
+            <div className="mt-1 text-white/60 text-xs space-y-0.5">
+              {(branding.addressLines || ["145 Harley Street", "London, W1G 6BJ"]).map((line, i) => (
+                <div key={i}>{line}</div>
+              ))}
             </div>
           </div>
-
-          {/* Accent bar */}
-          <div className="mt-6 h-[2px] w-full overflow-hidden rounded-full bg-white/10 print:bg-black/10">
-            <div
-              className="h-full w-[42%] rounded-full"
-              style={{
-                background: `linear-gradient(90deg, ${accent}, transparent)`,
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="relative grid grid-cols-1 gap-4 px-6 py-6 sm:grid-cols-3">
-          {/* Left: Bill To */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 print:border-black/10 print:bg-white">
-            <div className="text-xs font-semibold uppercase tracking-wide text-white/60 print:text-black/60">
-              {branding.billToLabel ?? "Bill To"}
-            </div>
-
-            <div className="mt-3 space-y-1">
-              <div className="text-base font-semibold">
-                {branding.patientName ?? "Patient"}
-              </div>
-              {branding.patientEmail ? (
-                <div className="text-sm text-white/70 print:text-black/70">
-                  {branding.patientEmail}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="mt-5 space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-white/60 print:text-black/60">Issued</span>
-                <span className="font-medium">{safeDate(invoice.issuedAt)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-white/60 print:text-black/60">Due</span>
-                <span className="font-medium">{safeDate(invoice.dueDate)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-white/60 print:text-black/60">Currency</span>
-                <span className="font-medium">{invoice.currency}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Middle: Facility/Support */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 print:border-black/10 print:bg-white">
-            <div className="text-xs font-semibold uppercase tracking-wide text-white/60 print:text-black/60">
-              {branding.facilityLabel ?? "Facility"}
-            </div>
-
-            <div className="mt-3 space-y-1">
-              <div className="text-base font-semibold">
-                {branding.facilityName ?? branding.brandName}
-              </div>
-              <div className="text-sm text-white/70 print:text-black/70">
-                {branding.addressLines?.[0] ?? "—"}
-              </div>
-            </div>
-
-            <div className="mt-5 h-px bg-white/10 print:bg-black/10" />
-
-            <div className="mt-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-white/60 print:text-black/60">
-                Support
-              </div>
-              <div className="mt-2 space-y-1 text-sm text-white/80 print:text-black/80">
-                {branding.supportEmail ? <div>{branding.supportEmail}</div> : <div>—</div>}
-                {branding.supportPhone ? <div>{branding.supportPhone}</div> : null}
-              </div>
-            </div>
-          </div>
-
-          {/* Right: Total Summary */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 print:border-black/10 print:bg-white">
-            <div className="text-xs font-semibold uppercase tracking-wide text-white/60 print:text-black/60">
-              Amount Due
-            </div>
-
-            <div className="mt-2 flex items-end justify-between gap-3">
-              <div className="text-3xl font-semibold tracking-tight">
-                {safeMoney(invoice.currency, computed.total)}
-              </div>
-              <div
-                className="h-10 w-10 rounded-2xl ring-1 ring-white/10 print:ring-black/10"
-                style={{ background: accent }}
-              />
-            </div>
-
-            <div className="mt-4 space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-white/60 print:text-black/60">Subtotal</span>
-                <span className="font-medium">
-                  {safeMoney(invoice.currency, computed.subtotal)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-white/60 print:text-black/60">Tax</span>
-                <span className="font-medium">
-                  {safeMoney(invoice.currency, computed.tax)}
-                </span>
-              </div>
-              <div className="h-px bg-white/10 print:bg-black/10" />
-              <div className="flex items-center justify-between">
-                <span className="text-white/60 print:text-black/60">Total</span>
-                <span className="font-semibold">
-                  {safeMoney(invoice.currency, computed.total)}
-                </span>
-              </div>
-
-              {typeof invoice.coveredAmount === "number" ? (
-                <div className="mt-2 flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs print:border-black/10 print:bg-black/5">
-                  <span className="text-white/60 print:text-black/60">Covered</span>
-                  <span className="font-semibold">
-                    {safeMoney(invoice.currency, invoice.coveredAmount)}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        {/* Items */}
-        <div className="relative px-6 pb-6">
-          <div className="overflow-hidden rounded-2xl border border-white/10 print:border-black/10">
-            <div className="flex items-center justify-between bg-white/5 px-4 py-3 print:bg-black/5">
-              <div className="text-sm font-semibold">Line items</div>
-              <div className="text-xs text-white/60 print:text-black/60">
-                {invoice.items?.length ?? 0} item(s)
-              </div>
-            </div>
-
-            <table className="w-full text-left text-sm">
-              <thead className="bg-white/5 text-xs text-white/70 print:bg-black/5 print:text-black/70">
-                <tr>
-                  <th className="px-4 py-3">Description</th>
-                  <th className="px-4 py-3 text-right">Qty</th>
-                  <th className="px-4 py-3 text-right">Unit</th>
-                  <th className="px-4 py-3 text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/10 print:divide-black/10">
-                {invoice.items.map((it, idx) => (
-                  <tr key={idx} className="bg-[#0b0f14] print:bg-white">
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{it.description}</div>
-                      {it.code ? (
-                        <div className="mt-0.5 text-xs text-white/50 print:text-black/50">
-                          {it.code}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 text-right">{it.qty}</td>
-                    <td className="px-4 py-3 text-right">
-                      {safeMoney(invoice.currency, it.unitPrice)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {safeMoney(invoice.currency, it.amount)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Footer note */}
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div className="max-w-2xl text-xs text-white/55 print:text-black/55">
-              {branding.footerNote ??
-                "If you have questions about this invoice, contact support. Keep this invoice for your records."}
-            </div>
-
-            <div className="text-xs text-white/50 print:hidden">
-              Tip: hook your Download button to{" "}
-              <code className="text-white/70">/api/portal/invoices/[id]/pdf</code>
+          <div className="text-right">
+            <StatusBadge status={invoice.status} />
+            <div className="mt-3 text-white/80 text-xs">
+              <div className="text-white/50 text-[10px] uppercase tracking-widest mb-0.5">Invoice No.</div>
+              <div className="font-mono font-semibold text-sm">{invoice.invoiceNo || "—"}</div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* ===== Body ===== */}
+      <div className="receipt-body space-y-6">
+        {/* Two-column info */}
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold mb-2">Bill To</div>
+            <div className="text-sm font-semibold text-gray-900">{branding.patientName || "Patient"}</div>
+            {branding.patientEmail && <div className="text-xs text-gray-500 mt-0.5">{branding.patientEmail}</div>}
+            {branding.patientId && <div className="text-xs text-gray-400 mt-0.5 font-mono">ID: {branding.patientId}</div>}
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold mb-2">Details</div>
+            <div className="space-y-1 text-xs">
+              <div><span className="text-gray-400">Issued:</span> <span className="text-gray-700 font-medium">{safeDate(invoice.issuedAt)}</span></div>
+              <div><span className="text-gray-400">Due:</span> <span className="text-gray-700 font-medium">{safeDate(invoice.dueDate)}</span></div>
+              {invoice.paidAt && (
+                <div><span className="text-gray-400">Paid:</span> <span className="text-emerald-600 font-medium">{safeDate(invoice.paidAt)}</span></div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Ailment / Diagnosis */}
+        {(invoice.ailment || invoice.diagnosis) && (
+          <div className="flex items-start gap-3 px-4 py-3 bg-blue-50 rounded-xl border border-blue-100">
+            <svg className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-blue-500 font-semibold">Diagnosis / Ailment</div>
+              <div className="text-sm text-gray-800 mt-0.5">
+                {[invoice.ailment, invoice.diagnosis].filter(Boolean).join(" — ")}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Line Items */}
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr style={{ background: brandColor }}>
+                <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-widest text-white/80 font-semibold">Description</th>
+                <th className="text-center px-3 py-2.5 text-[10px] uppercase tracking-widest text-white/80 font-semibold w-16">Qty</th>
+                <th className="text-right px-3 py-2.5 text-[10px] uppercase tracking-widest text-white/80 font-semibold w-24">Price</th>
+                <th className="text-right px-4 py-2.5 text-[10px] uppercase tracking-widest text-white/80 font-semibold w-24">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(invoice.items || []).map((item, i) => (
+                <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}>
+                  <td className="px-4 py-3">
+                    <div className="text-sm text-gray-800">{item.description}</div>
+                    {item.code && <div className="text-[10px] text-gray-400 font-mono mt-0.5">{item.code}</div>}
+                  </td>
+                  <td className="text-center px-3 py-3 text-sm text-gray-600">{item.qty}</td>
+                  <td className="text-right px-3 py-3 text-sm text-gray-600">{safeMoney(cur, item.unitPrice)}</td>
+                  <td className="text-right px-4 py-3 text-sm font-semibold text-gray-800">{safeMoney(cur, item.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Totals */}
+        <div className="flex justify-end">
+          <div className="w-64 space-y-2">
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>Subtotal</span>
+              <span>{safeMoney(cur, invoice.subtotal)}</span>
+            </div>
+            {(invoice.tax || 0) > 0 && (
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>VAT / Tax</span>
+                <span>{safeMoney(cur, invoice.tax)}</span>
+              </div>
+            )}
+            {coveredAmount > 0 && (
+              <div className="flex justify-between text-sm text-emerald-600">
+                <span className="flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  CareFlex Covered
+                </span>
+                <span>−{safeMoney(cur, coveredAmount)}</span>
+              </div>
+            )}
+            <div className="h-px bg-gray-200 my-1" />
+            <div className="flex justify-between items-center py-2 px-3 rounded-lg" style={{ background: brandColor }}>
+              <span className="text-white/80 text-sm font-medium">Total Due</span>
+              <span className="text-white text-lg font-bold">{safeMoney(cur, balanceDue)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* CareFlex note */}
+        {coveredAmount > 0 && (
+          <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 rounded-xl border border-emerald-100">
+            <svg className="w-5 h-5 text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            <div className="text-sm text-emerald-800">
+              <span className="font-semibold">{safeMoney(cur, coveredAmount)}</span> of this invoice was covered by your CareFlex credit line.
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ===== Footer ===== */}
+      <div className="receipt-footer text-center space-y-1">
+        <p className="text-xs text-gray-400">
+          Thank you for choosing {branding.brandName || "Evermore Hospitals"}. This invoice was generated electronically and is valid without a signature.
+        </p>
+        <p className="text-[10px] text-gray-300">
+          {branding.supportPhone || "+44 20 7946 0958"} • {branding.supportEmail || "billing@evermore.health"} • Invoice {invoice.invoiceNo}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ===== Compact invoice card for lists ===== */
+export function InvoiceCard({
+  invoice,
+  currency = "GBP",
+  onView,
+  onPay,
+  onDownload,
+}: {
+  invoice: Invoice;
+  currency?: string;
+  onView?: () => void;
+  onPay?: () => void;
+  onDownload?: () => void;
+}) {
+  const cfg = statusConfig[invoice.status] || statusConfig.issued;
+  const balanceDue = Math.max(0, (invoice.total || 0) - (Number(invoice.coveredAmount) || 0));
+  const isOverdue = invoice.status === "issued" && new Date(invoice.dueDate) < new Date();
+
+  return (
+    <div className="card p-4 hover:border-gray-300 transition-all group cursor-pointer" onClick={onView}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs text-gray-400">{invoice.invoiceNo}</span>
+          <StatusBadge status={isOverdue ? "overdue" : invoice.status} />
+        </div>
+        <span className="text-lg font-bold text-gray-900">{safeMoney(currency, invoice.total)}</span>
+      </div>
+
+      {invoice.ailment && (
+        <div className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+          </svg>
+          {invoice.ailment}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between text-xs text-gray-400">
+        <span>Issued {safeDate(invoice.issuedAt)} • Due {safeDate(invoice.dueDate)}</span>
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {onPay && balanceDue > 0 && invoice.status !== "paid" && invoice.status !== "void" && (
+            <button onClick={(e) => { e.stopPropagation(); onPay(); }} className="btn btn-sm btn-accent">Pay</button>
+          )}
+          {onDownload && (
+            <button onClick={(e) => { e.stopPropagation(); onDownload(); }} className="btn btn-sm btn-ghost">PDF</button>
+          )}
+        </div>
+      </div>
+
+      {/* Coverage bar */}
+      {invoice.total > 0 && Number(invoice.coveredAmount) > 0 && invoice.status !== "paid" && (
+        <div className="mt-3">
+          <div className="flex justify-between text-[10px] text-gray-400 mb-1">
+            <span>Covered: {safeMoney(currency, Number(invoice.coveredAmount))}</span>
+            <span>Due: {safeMoney(currency, balanceDue)}</span>
+          </div>
+          <div className="progress-bar">
+            <div
+              className="progress-bar-fill bg-emerald-400"
+              style={{ width: `${Math.min(100, (Number(invoice.coveredAmount) / invoice.total) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

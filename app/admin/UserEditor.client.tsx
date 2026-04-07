@@ -798,6 +798,9 @@ function EditInvoiceModal({
   const [title, setTitle] = useState(initial?.title ?? "Consultation fee");
   const [amount, setAmount] = useState(String(initial?.amount ?? 250));
   const [status, setStatus] = useState<Invoice["status"]>(initial?.status ?? "Pending approval");
+  const [ailment, setAilment] = useState(initial?.ailment ?? "");
+  const [diagnosis, setDiagnosis] = useState(initial?.diagnosis ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [createdLocal, setCreatedLocal] = useState(isoToLocalInputValue(initial?.createdISO ?? new Date().toISOString()));
   const [dueLocal, setDueLocal] = useState(isoToLocalInputValue(initial?.dueISO ?? new Date().toISOString()));
 
@@ -817,6 +820,9 @@ function EditInvoiceModal({
                 const inv: Invoice = {
                   id,
                   title: title || "Invoice",
+                  ailment: ailment || undefined,
+                  diagnosis: diagnosis || undefined,
+                  notes: notes || undefined,
                   amount: Number(amount || 0),
                   status,
                   createdISO: localInputToISO(createdLocal) || new Date().toISOString(),
@@ -849,13 +855,21 @@ function EditInvoiceModal({
               <option value="Waived">Waived</option>
             </Select>
           </Field>
-          <div />
+          <Field label="Ailment">
+            <TextInput value={ailment} onChange={setAilment} placeholder="e.g. Hypertension, Migraine" />
+          </Field>
           <Field label="Created">
             <TextInput value={createdLocal} onChange={setCreatedLocal} type="datetime-local" />
           </Field>
           <Field label="Due">
             <TextInput value={dueLocal} onChange={setDueLocal} type="datetime-local" />
           </Field>
+          </Field>
+          <Field label="Diagnosis">
+            <TextInput value={diagnosis} onChange={setDiagnosis} placeholder="Clinical diagnosis" />
+          </Field>
+          <Field label="Notes">
+            <TextInput value={notes} onChange={setNotes} placeholder="Additional billing notes" />
         </div>
       </div>
     </Modal>
