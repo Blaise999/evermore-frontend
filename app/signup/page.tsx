@@ -1,6 +1,6 @@
 // app/signup/check-email/page.tsx
 import { Suspense } from "react";
-import CheckEmailClient from "./CheckEmail.client";
+import CheckEmailClient from "./check-email/CheckEmail.client";
 
 export default function CheckEmailPage() {
   return (

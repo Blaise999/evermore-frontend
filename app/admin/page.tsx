@@ -1,7 +1,7 @@
 // app/admin/login/page.tsx  (Server Component)
 import Image from "next/image";
 import { Suspense } from "react";
-import AdminLoginClient from "./AdminLogin.client";
+import AdminLoginClient from "./login/AdminLogin.client";
 
 // ✅ same pattern as your /admin page
 import logo from "@/public/Pictures/Logos.png";

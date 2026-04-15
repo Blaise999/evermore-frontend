@@ -1,6 +1,6 @@
 // app/verify-email/success/page.tsx
 import { Suspense } from "react";
-import VerifyEmailSuccessClient from "./VerifyEmailSuccessClient";
+import VerifyEmailSuccessClient from "./success/VerifyEmailSuccessClient";
 
 export default function Page() {
   return (
