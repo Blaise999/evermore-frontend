@@ -11,8 +11,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: "OTP required" }, { status: 400 });
   }
 
-  // ✅ DEV MODE: only accept "0000"
-  if (otp !== "0000") {
+  // ✅ DEV MODE: only accept "000000"
+  if (otp !== "000000") {
     return NextResponse.json({ ok: false, message: "Invalid OTP" }, { status: 400 });
   }
 

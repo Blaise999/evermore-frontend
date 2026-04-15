@@ -929,9 +929,24 @@ function AppointmentBookingModal({
     setOtpError(null);
 
     try {
-      const res = await apiPOST<any>(EP_BOOK_APPT, { ...bookingPayload, otp });
+      // ✅ Step 2: Verify OTP first
+      const verifyRes = await fetch("/api/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ otp, purpose: "appointment_booking" }),
+      });
+      const verifyData = await verifyRes.json().catch(() => ({}));
+      
+      if (!verifyRes.ok || !verifyData?.ok) {
+        setOtpError(verifyData?.message || "Invalid or expired code. Please try again.");
+        return;
+      }
 
-      if (res?.ok) {
+      // ✅ Step 3: OTP verified — now book the appointment
+      const res = await apiPOST<any>(EP_BOOK_APPT, { ...bookingPayload, otpVerified: true });
+
+      if (res?.ok !== false) {
         const rawAppt = res?.appointment;
         const rawInv = res?.invoice;
 
@@ -950,10 +965,10 @@ function AppointmentBookingModal({
         onClose();
         setTab("billing");
       } else {
-        throw new Error(res?.message || "Verification failed");
+        throw new Error(res?.message || "Booking failed after verification.");
       }
     } catch (e: any) {
-      setOtpError(e?.message || "Invalid or expired OTP. Please try again.");
+      setOtpError(e?.message || "Booking failed. Please try again.");
     }
   };
 
@@ -1179,7 +1194,7 @@ function AppointmentBookingModal({
                   </button>
 
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       const draft: AppointmentDraft = {
                         dept,
                         clinician,
@@ -1192,12 +1207,40 @@ function AppointmentBookingModal({
 
                       if (method === "CareFlex Credit") {
                         if (payLaterDisabled) return;
-                        onPayLater(draft);
-                        return;
+                      } else {
+                        if (!canUseLinked) return;
                       }
 
-                      if (!canUseLinked) return;
-                      onPayFromLinkedAccount(draft);
+                      // ✅ Step 1: Send OTP before proceeding
+                      try {
+                        const payload = {
+                          department: draft.dept,
+                          clinician: draft.clinician,
+                          facility: draft.facility,
+                          scheduledAt: draft.startISO,
+                          notes: draft.notes,
+                          paymentMethod: method === "CareFlex Credit" ? "pay_later" : "linked_account",
+                          estimatedCostGBP: draft.estimatedCostGBP,
+                          currency: "GBP",
+                          dept: draft.dept,
+                          startISO: draft.startISO,
+                          estimatedCost: draft.estimatedCostGBP,
+                        };
+                        setBookingPayload(payload);
+
+                        await fetch("/api/otp/send", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          credentials: "include",
+                          body: JSON.stringify({ purpose: "appointment_booking" }),
+                        });
+
+                        setOtpStep(true);
+                        setOtp("");
+                        setOtpError(null);
+                      } catch (e: any) {
+                        setToast({ type: "error", message: e?.message || "Failed to send verification code." });
+                      }
                     }}
                     disabled={(method === "Linked account" && !canUseLinked) || (method === "CareFlex Credit" && payLaterDisabled)}
                     className={cn(
@@ -1217,10 +1260,20 @@ function AppointmentBookingModal({
 
                 {/* OTP Verification UI */}
                 {otpStep && (
-                  <div className="mt-6 rounded-3xl bg-white p-5 ring-1 ring-slate-200">
-                    <div className="text-sm font-semibold text-slate-900">Enter 6-digit code</div>
-                    <div className="mt-1 text-xs text-slate-600">
-                      We sent a verification code to your email. It expires in 10 minutes.
+                  <div className="mt-6 rounded-3xl bg-blue-50 p-5 ring-1 ring-blue-200">
+                    <div className="flex items-center gap-2">
+                      <svg viewBox="0 0 24 24" className="h-5 w-5 text-blue-600" fill="none">
+                        <path d="M12 2l8 4v6c0 5.2-3.4 9.9-8 10-4.6-.1-8-4.8-8-10V6l8-4Z" className="stroke-current" strokeWidth="1.7" strokeLinejoin="round"/>
+                        <path d="M9 12l2 2 4-5" className="stroke-current" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      <div className="text-sm font-semibold text-blue-900">Verify your identity</div>
+                    </div>
+                    <div className="mt-2 text-xs text-blue-700">
+                      We sent a 6-digit verification code to your registered email. Enter it below to confirm your booking.
+                    </div>
+
+                    <div className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 ring-1 ring-amber-200">
+                      <div className="text-[11px] font-semibold text-amber-800">Dev mode — use code: 000000</div>
                     </div>
 
                     <input
@@ -1234,13 +1287,13 @@ function AppointmentBookingModal({
                         if (otpError) setOtpError(null);
                       }}
                       className="mt-4 w-full rounded-2xl bg-white px-6 py-5 text-center text-4xl font-mono tracking-[12px] ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                      placeholder="123456"
+                      placeholder="000000"
                       autoFocus
                     />
 
                     {otpError && <div className="mt-3 text-xs font-semibold text-rose-600">{otpError}</div>}
 
-                    <div className="mt-6 flex gap-3">
+                    <div className="mt-5 flex gap-3">
                       <button
                         onClick={() => {
                           setOtpStep(false);
@@ -1250,6 +1303,24 @@ function AppointmentBookingModal({
                         className="flex-1 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
                       >
                         ← Back
+                      </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await fetch("/api/otp/send", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              credentials: "include",
+                              body: JSON.stringify({ purpose: "appointment_booking" }),
+                            });
+                            setOtp("");
+                            setOtpError(null);
+                            setToast({ type: "info", message: "New code sent to your email." });
+                          } catch {}
+                        }}
+                        className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50"
+                      >
+                        Resend
                       </button>
                       <button
                         onClick={handleOtpVerify}
@@ -1364,13 +1435,14 @@ export default function DashboardClient() {
 
           if (rawUser) {
             if (rawUser.fullName) {
-              setProfile(rawUser);
+              setProfile({ ...rawUser, pictureUrl: rawUser.pictureUrl ?? rawUser.picture_url ?? rawUser.avatarUrl ?? rawUser.avatar ?? rawUser.photoUrl ?? null } as any);
             } else {
               setProfile({
                 fullName: rawUser.name ?? rawUser.full_name ?? "Patient",
                 patientId: rawUser.hospitalId ?? rawUser.patientId ?? rawUser.patient_id ?? "—",
                 email: rawUser.email ?? "",
                 phone: rawUser.phone ?? null,
+                pictureUrl: rawUser.pictureUrl ?? rawUser.picture_url ?? rawUser.avatarUrl ?? rawUser.avatar ?? rawUser.photoUrl ?? null,
                 eligibilityScore: Number(rawAccount?.creditScore ?? rawAccount?.credit_score ?? 720),
                 careflexLimit: (() => {
                   const n = Number(rawAccount?.creditLimit ?? rawAccount?.credit_limit ?? rawUser.careflexLimit ?? 0);
@@ -2200,10 +2272,30 @@ export default function DashboardClient() {
 
       {/* Greeting + Health Summary */}
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900" style={{ fontFamily: "'DM Serif Display', Georgia, serif" }}>
-          Welcome back{(profile as any)?.fullName ? `, ${String((profile as any).fullName).split(" ")[0]}` : ""}
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">Here&apos;s your health overview for today.</p>
+        <div className="flex items-center gap-4">
+          {/* Profile Picture Avatar */}
+          <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-blue-100 to-blue-50 ring-2 ring-white shadow-lg">
+            {(profile as any)?.pictureUrl ? (
+              <img
+                src={String((profile as any).pictureUrl)}
+                alt="Profile"
+                className="h-full w-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+            ) : null}
+            {!(profile as any)?.pictureUrl && (
+              <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-blue-400">
+                {String((profile as any)?.fullName || "P").charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900" style={{ fontFamily: "'DM Serif Display', Georgia, serif" }}>
+              Welcome back{(profile as any)?.fullName ? `, ${String((profile as any).fullName).split(" ")[0]}` : ""}
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">Here&apos;s your health overview for today.</p>
+          </div>
+        </div>
 
         {/* Health Info Strip */}
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -2434,39 +2526,90 @@ export default function DashboardClient() {
 
 
             {/* Active Conditions & Spending */}
-            {Object.keys(ailmentSpend).length > 0 && (
-              <div className="rounded-3xl bg-white p-6 ring-1 ring-slate-200">
-                <div className="flex items-center gap-2 mb-4">
-                  <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                  </svg>
-                  <div className="text-sm font-semibold text-slate-900">Conditions & Treatment Costs</div>
+            {(() => {
+              const entries = Object.entries(ailmentSpend).sort(([,a],[,b]) => (b as any).total - (a as any).total);
+              const grandTotal = entries.reduce((s, [,d]: [string, any]) => s + d.total, 0);
+              const grandCovered = entries.reduce((s, [,d]: [string, any]) => s + d.covered, 0);
+              const grandOutstanding = entries.reduce((s, [,d]: [string, any]) => s + d.outstanding, 0);
+
+              return entries.length > 0 ? (
+              <div className="rounded-3xl bg-white ring-1 ring-slate-200 shadow-[0_22px_70px_rgba(2,8,23,.10)] overflow-hidden">
+                <div className="border-b border-slate-100 px-6 py-5">
+                  <div className="flex items-center gap-2">
+                    <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                    <div className="text-sm font-semibold text-slate-900">Your Conditions & Treatment Costs</div>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">Track spending across all your active and past conditions.</p>
                 </div>
-                <div className="space-y-3">
-                  {Object.entries(ailmentSpend)
-                    .sort(([,a],[,b]) => (b as any).total - (a as any).total)
-                    .slice(0, 6)
-                    .map(([ailment, data]: [string, any]) => (
-                    <div key={ailment} className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-sm font-semibold text-slate-800">{ailment}</span>
-                        <span className="text-sm font-bold text-slate-900">{fmtMoney(data.total, "GBP")}</span>
+
+                {/* Summary strip */}
+                <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
+                  <div className="px-5 py-4 text-center">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total Spent</div>
+                    <div className="mt-1 text-lg font-bold text-slate-900">{fmtMoney(grandTotal, "GBP")}</div>
+                  </div>
+                  <div className="px-5 py-4 text-center">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-500">Covered</div>
+                    <div className="mt-1 text-lg font-bold text-emerald-700">{fmtMoney(grandCovered, "GBP")}</div>
+                  </div>
+                  <div className="px-5 py-4 text-center">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-500">Outstanding</div>
+                    <div className="mt-1 text-lg font-bold text-amber-700">{fmtMoney(grandOutstanding, "GBP")}</div>
+                  </div>
+                </div>
+
+                {/* Condition cards */}
+                <div className="px-6 py-5 space-y-3">
+                  {entries.slice(0, 8).map(([ailment, data]: [string, any], idx) => {
+                    const pct = Math.min(100, (data.covered / (data.total || 1)) * 100);
+                    const isFullyCovered = data.outstanding <= 0;
+                    const colors = [
+                      { bg: "bg-blue-50", ring: "ring-blue-100", text: "text-blue-700", bar: "from-blue-500 to-blue-400" },
+                      { bg: "bg-violet-50", ring: "ring-violet-100", text: "text-violet-700", bar: "from-violet-500 to-violet-400" },
+                      { bg: "bg-rose-50", ring: "ring-rose-100", text: "text-rose-700", bar: "from-rose-500 to-rose-400" },
+                      { bg: "bg-amber-50", ring: "ring-amber-100", text: "text-amber-700", bar: "from-amber-500 to-amber-400" },
+                      { bg: "bg-teal-50", ring: "ring-teal-100", text: "text-teal-700", bar: "from-teal-500 to-teal-400" },
+                      { bg: "bg-orange-50", ring: "ring-orange-100", text: "text-orange-700", bar: "from-orange-500 to-orange-400" },
+                    ];
+                    const c = colors[idx % colors.length];
+
+                    return (
+                      <div key={ailment} className={cn("rounded-2xl p-4 ring-1", c.bg, c.ring)}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className={cn("inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold", c.bg, c.text)}>
+                              {ailment.charAt(0).toUpperCase()}
+                            </span>
+                            <span className="text-sm font-semibold text-slate-900">{ailment}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-bold text-slate-900">{fmtMoney(data.total, "GBP")}</span>
+                            {isFullyCovered ? (
+                              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">Covered</span>
+                            ) : (
+                              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-amber-200">{fmtMoney(data.outstanding, "GBP")} due</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/80">
+                          <div
+                            className={cn("h-full rounded-full bg-gradient-to-r transition-all duration-700", c.bar)}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <div className="mt-1.5 flex justify-between text-[10px] font-medium text-slate-500">
+                          <span>Covered: {fmtMoney(data.covered, "GBP")} ({Math.round(pct)}%)</span>
+                          <span>Billed: {fmtMoney(data.total, "GBP")}</span>
+                        </div>
                       </div>
-                      <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
-                        <div className="h-full rounded-full transition-all duration-500" style={{
-                          width: `${Math.min(100, (data.covered / (data.total || 1)) * 100)}%`,
-                          background: data.outstanding > 0 ? "linear-gradient(90deg, #F59E0B, #FBBF24)" : "linear-gradient(90deg, #10B981, #34D399)",
-                        }} />
-                      </div>
-                      <div className="mt-1 flex justify-between text-[10px] text-slate-400">
-                        <span>Covered: {fmtMoney(data.covered, "GBP")}</span>
-                        <span>{data.outstanding > 0 ? `Outstanding: ${fmtMoney(data.outstanding, "GBP")}` : "Fully covered"}</span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
-            )}
+              ) : null;
+            })()}
           {/* Right */}
           <div className="grid gap-4">
             <div className="rounded-3xl bg-white p-6 ring-1 ring-slate-200 shadow-[0_22px_70px_rgba(2,8,23,.10)]">

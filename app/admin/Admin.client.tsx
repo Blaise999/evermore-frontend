@@ -540,19 +540,28 @@ export default function AdminClient() {
                             className={`cursor-pointer transition-colors ${active ? "bg-blue-50" : "hover:bg-slate-50"}`}
                           >
                             <td className="px-6 py-4">
-                              <div className="font-medium text-slate-900">{u.email}</div>
-                              <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                                ID: {u._id.slice(-8)}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    safeCopy(u._id);
-                                    pushToast("ok", "Full ID copied");
-                                  }}
-                                  className="font-medium text-blue-600 hover:underline"
-                                >
-                                  Copy full
-                                </button>
+                              <div className="flex items-center gap-3">
+                                <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-slate-100 ring-1 ring-slate-200">
+                                  <div className="flex h-full w-full items-center justify-center text-sm font-bold text-slate-400">
+                                    {String(u.email || "?").charAt(0).toUpperCase()}
+                                  </div>
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="font-medium text-slate-900">{u.email}</div>
+                                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                                    ID: {u._id.slice(-8)}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        safeCopy(u._id);
+                                        pushToast("ok", "Full ID copied");
+                                      }}
+                                      className="font-medium text-blue-600 hover:underline"
+                                    >
+                                      Copy full
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
                             </td>
                             <td className="px-6 py-4 text-right text-slate-600">{fmtDateTime(u.lastLoginAt || null)}</td>
@@ -580,7 +589,12 @@ export default function AdminClient() {
           subtitle={selectedUser ? "Profile, records, appointments, invoices & history" : "Select a patient to begin"}
           right={
             selectedUser && (
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                {profile?.pictureUrl && (
+                  <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl ring-2 ring-white shadow">
+                    <img src={String(profile.pictureUrl)} alt="" className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                  </div>
+                )}
                 <Button tone="ghost" disabled={loadingUserData} onClick={() => selectedUserId && loadSelectedUserData(selectedUserId)}>
                   {loadingUserData ? "Reloading…" : "Reload Data"}
                 </Button>
@@ -661,6 +675,31 @@ export default function AdminClient() {
                           }))
                         }
                       />
+                    </Field>
+                    <Field label="Profile Picture URL" className="sm:col-span-2">
+                      <div className="flex items-center gap-4">
+                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-slate-100 ring-1 ring-slate-200">
+                          {profile?.pictureUrl ? (
+                            <img
+                              src={String(profile.pictureUrl)}
+                              alt="Avatar"
+                              className="h-full w-full object-cover"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-xl font-bold text-slate-400">
+                              {String(profile?.fullName || "?").charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <TextInput
+                            placeholder="https://example.com/photo.jpg"
+                            value={profile?.pictureUrl || ""}
+                            onChange={(v) => setProfile((p) => ({ ...(p || {}), pictureUrl: v || null }))}
+                          />
+                        </div>
+                      </div>
                     </Field>
                     <Field label="Notes" className="sm:col-span-2">
                       <TextArea rows={6} value={profile?.notes || ""} onChange={(v) => setProfile((p) => ({ ...(p || {}), notes: v }))} />
@@ -888,11 +927,13 @@ export default function AdminClient() {
                             open: true,
                             item: {
                               invoiceNo: `INV-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${Math.floor(1000 + Math.random() * 9000)}`,
-                              currency: "EUR",
+                              currency: "GBP",
                               status: "issued",
                               issuedAt: new Date().toISOString(),
                               dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(),
                               paidAt: null,
+                              ailment: "",
+                              diagnosis: "",
                               items: [{ name: "Consultation", qty: 1, unitPrice: 60 }],
                               subtotal: 60,
                               tax: 0,
@@ -921,12 +962,16 @@ export default function AdminClient() {
                               <td className="px-6 py-4">
                                 <div className="font-medium text-slate-900">{inv.invoiceNo || "—"}</div>
                                 <div className="text-xs text-slate-600">
+                                  {inv.ailment ? <span className="font-medium text-blue-600">{inv.ailment} • </span> : null}
                                   Issued {fmtDateTime(inv.issuedAt)} • Due {fmtDateTime(inv.dueDate)}
                                 </div>
                               </td>
                               <td className="px-6 py-4 text-slate-700">{inv.status || "—"}</td>
                               <td className="px-6 py-4 text-slate-700">{fmtMoney(Number(inv.total || 0), inv.currency || "EUR")}</td>
                               <td className="px-6 py-4 text-right">
+                                <Button tone="ghost" size="sm" onClick={() => downloadInvoicePdf(inv._id)}>
+                                  PDF
+                                </Button>
                                 <Button tone="ghost" size="sm" onClick={() => setInvoiceModal({ open: true, item: { ...inv } })}>
                                   Edit
                                 </Button>
@@ -1050,7 +1095,19 @@ export default function AdminClient() {
       >
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="Type">
-            <TextInput value={recordModal.item?.type || ""} onChange={(v) => setRecordModal((m) => ({ ...m, item: { ...(m.item || {}), type: v } }))} />
+            <Select
+              value={recordModal.item?.type || "consultation"}
+              onChange={(v) => setRecordModal((m) => ({ ...m, item: { ...(m.item || {}), type: v } }))}
+              options={[
+                { label: "Consultation", value: "consultation" },
+                { label: "Lab", value: "lab" },
+                { label: "Radiology / Imaging", value: "radiology" },
+                { label: "Prescription", value: "prescription" },
+                { label: "Diagnosis", value: "diagnosis" },
+                { label: "Discharge", value: "discharge" },
+                { label: "Other", value: "other" },
+              ]}
+            />
           </Field>
           <Field label="Date & Time">
             <TextInput
@@ -1067,6 +1124,16 @@ export default function AdminClient() {
           </Field>
           <Field label="Facility">
             <TextInput value={recordModal.item?.facility || ""} onChange={(v) => setRecordModal((m) => ({ ...m, item: { ...(m.item || {}), facility: v } }))} />
+          </Field>
+          <Field label="Summary" className="sm:col-span-2">
+            <TextArea rows={3} placeholder="Brief summary of findings or visit…" value={recordModal.item?.summary || ""} onChange={(v) => setRecordModal((m) => ({ ...m, item: { ...(m.item || {}), summary: v } }))} />
+          </Field>
+          <Field label="Tags (comma-separated)" className="sm:col-span-2">
+            <TextInput
+              placeholder="cardiology, follow-up, urgent..."
+              value={Array.isArray(recordModal.item?.tags) ? recordModal.item.tags.join(", ") : (recordModal.item?.tags || "")}
+              onChange={(v) => setRecordModal((m) => ({ ...m, item: { ...(m.item || {}), tags: v.split(",").map((s: string) => s.trim()).filter(Boolean) } }))}
+            />
           </Field>
           <Field label="Notes" className="sm:col-span-2">
             <TextArea rows={6} value={recordModal.item?.notes || ""} onChange={(v) => setRecordModal((m) => ({ ...m, item: { ...(m.item || {}), notes: v } }))} />
@@ -1107,6 +1174,7 @@ export default function AdminClient() {
               onChange={(v) => setApptModal((m) => ({ ...m, item: { ...(m.item || {}), status: v } }))}
               options={[
                 { label: "Scheduled", value: "scheduled" },
+                { label: "Pending Approval", value: "pending" },
                 { label: "Completed", value: "completed" },
                 { label: "Cancelled", value: "cancelled" },
               ]}
@@ -1124,6 +1192,21 @@ export default function AdminClient() {
           </Field>
           <Field label="Doctor">
             <TextInput value={apptModal.item?.doctor || ""} onChange={(v) => setApptModal((m) => ({ ...m, item: { ...(m.item || {}), doctor: v } }))} />
+          </Field>
+          <Field label="Facility">
+            <TextInput
+              placeholder="Evermore Central, Evermore North..."
+              value={apptModal.item?.facility || ""}
+              onChange={(v) => setApptModal((m) => ({ ...m, item: { ...(m.item || {}), facility: v } }))}
+            />
+          </Field>
+          <Field label="Estimated Cost (£)">
+            <TextInput
+              type="number"
+              placeholder="120"
+              value={String(apptModal.item?.estimatedCost ?? "")}
+              onChange={(v) => setApptModal((m) => ({ ...m, item: { ...(m.item || {}), estimatedCost: Number(v) || 0 } }))}
+            />
           </Field>
           <Field label="Reason" className="sm:col-span-2">
             <TextInput value={apptModal.item?.reason || ""} onChange={(v) => setApptModal((m) => ({ ...m, item: { ...(m.item || {}), reason: v } }))} />
@@ -1167,9 +1250,9 @@ export default function AdminClient() {
           </Field>
           <Field label="Currency">
             <Select
-              value={invoiceModal.item?.currency || "EUR"}
+              value={invoiceModal.item?.currency || "GBP"}
               onChange={(v) => setInvoiceModal((m) => ({ ...m, item: { ...(m.item || {}), currency: v } }))}
-              options={[{ label: "EUR", value: "EUR" }]}
+              options={[{ label: "GBP", value: "GBP" }, { label: "EUR", value: "EUR" }]}
             />
           </Field>
           <Field label="Status">
@@ -1177,8 +1260,10 @@ export default function AdminClient() {
               value={invoiceModal.item?.status || "issued"}
               onChange={(v) => setInvoiceModal((m) => ({ ...m, item: { ...(m.item || {}), status: v } }))}
               options={[
-                { label: "Issued", value: "issued" },
+                { label: "Issued (Unpaid)", value: "issued" },
                 { label: "Paid", value: "paid" },
+                { label: "Overdue", value: "overdue" },
+                { label: "Void / Waived", value: "void" },
               ]}
             />
           </Field>
@@ -1201,6 +1286,21 @@ export default function AdminClient() {
               type="datetime-local"
               value={isoToLocalInputValue(invoiceModal.item?.paidAt)}
               onChange={(v) => setInvoiceModal((m) => ({ ...m, item: { ...(m.item || {}), paidAt: v ? localInputToISO(v) : null } }))}
+            />
+          </Field>
+
+          <Field label="Ailment / Condition">
+            <TextInput
+              placeholder="e.g. Cardiology Consult, Knee Replacement..."
+              value={invoiceModal.item?.ailment || ""}
+              onChange={(v) => setInvoiceModal((m) => ({ ...m, item: { ...(m.item || {}), ailment: v } }))}
+            />
+          </Field>
+          <Field label="Diagnosis (optional)">
+            <TextInput
+              placeholder="ICD code or description"
+              value={invoiceModal.item?.diagnosis || ""}
+              onChange={(v) => setInvoiceModal((m) => ({ ...m, item: { ...(m.item || {}), diagnosis: v } }))}
             />
           </Field>
 

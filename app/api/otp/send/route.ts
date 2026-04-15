@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     ok: true,
     message: "OTP sent (dev mode).",
     purpose,
-    debugOtp: "0000",
+    debugOtp: "000000",
   });
 
   res.cookies.set("evermore_stepup", "", {

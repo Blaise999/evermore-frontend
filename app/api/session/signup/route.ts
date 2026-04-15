@@ -12,11 +12,12 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { name, email, password, phone } = body as {
+    const { name, email, password, phone, pictureUrl } = body as {
       name?: string;
       email?: string;
       password?: string;
       phone?: string | null;
+      pictureUrl?: string | null;
     };
 
     if (!name || !email || !password) {
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
         email: email.trim().toLowerCase(),
         password,
         phone: phone?.trim() || null,
+        pictureUrl: pictureUrl?.trim() || null,
       }),
       cache: "no-store",
     });

@@ -118,6 +118,7 @@ type FormState = {
   password: string;
   password2: string;
   insurance: string;
+  pictureUrl: string;
   agree: boolean;
   marketing: boolean;
 };
@@ -155,6 +156,7 @@ export default function SignupForm() {
     password: "",
     password2: "",
     insurance: "",
+    pictureUrl: "",
     agree: false,
     marketing: false,
   });
@@ -204,7 +206,8 @@ export default function SignupForm() {
         email,
         password: form.password,
         phone: phone ? phone : null,
-      });
+        pictureUrl: form.pictureUrl.trim() || null,
+      } as any);
 
       // ✅ go to "check your email" screen
       router.push(`/signup/check-email?email=${encodeURIComponent(email)}`);
@@ -289,6 +292,51 @@ export default function SignupForm() {
               type="date"
               autoComplete="bday"
             />
+          </Field>
+        </div>
+
+        <div className="rounded-3xl bg-slate-50 p-5 ring-1 ring-slate-200">
+          <Field label="Profile Picture" hint="Paste an image URL">
+            <div className="flex items-center gap-4">
+              <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
+                {form.pictureUrl.trim() ? (
+                  <img
+                    src={form.pictureUrl.trim()}
+                    alt="Preview"
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                      (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden");
+                    }}
+                    onLoad={(e) => {
+                      (e.target as HTMLImageElement).style.display = "block";
+                      (e.target as HTMLImageElement).nextElementSibling?.classList.add("hidden");
+                    }}
+                  />
+                ) : null}
+                <div className={cn(
+                  "absolute inset-0 flex flex-col items-center justify-center text-slate-400",
+                  form.pictureUrl.trim() ? "hidden" : ""
+                )}>
+                  <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none">
+                    <circle cx="12" cy="8" r="4" className="stroke-current" strokeWidth="1.5" />
+                    <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" className="stroke-current" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <input
+                  className={inputBase()}
+                  value={form.pictureUrl}
+                  onChange={(e) => onChange("pictureUrl", e.target.value)}
+                  placeholder="https://example.com/photo.jpg"
+                  inputMode="url"
+                />
+                <div className="mt-1.5 text-xs text-slate-500">
+                  Use a publicly accessible image URL. This will be saved to your profile.
+                </div>
+              </div>
+            </div>
           </Field>
         </div>
 
