@@ -1287,7 +1287,7 @@ function AppointmentBookingModal({
                         if (otpError) setOtpError(null);
                       }}
                       className="mt-4 w-full rounded-2xl bg-white px-6 py-5 text-center text-4xl font-mono tracking-[12px] ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                      placeholder="000000"
+                      placeholder=""
                       autoFocus
                     />
 
