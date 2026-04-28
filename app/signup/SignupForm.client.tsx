@@ -4,15 +4,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useMemo, useState } from "react";
+import { upload } from "@vercel/blob/client";
 
-// ✅ use your existing API client (DO NOT edit lib/Api.ts)
 import { api, ApiError } from "../libs/Api";
 
 function cn(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
 
-/** ---- Icons (lightweight, no deps) ---- */
 function Shield({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={cn("h-5 w-5", className)} fill="none">
@@ -32,6 +31,7 @@ function Shield({ className }: { className?: string }) {
     </svg>
   );
 }
+
 function Eye({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={cn("h-5 w-5", className)} fill="none">
@@ -49,21 +49,12 @@ function Eye({ className }: { className?: string }) {
     </svg>
   );
 }
+
 function EyeOff({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={cn("h-5 w-5", className)} fill="none">
-      <path
-        d="M3 3l18 18"
-        className="stroke-current"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
-      <path
-        d="M10.7 10.7a2.7 2.7 0 0 0 3.6 3.6"
-        className="stroke-current"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
+      <path d="M3 3l18 18" className="stroke-current" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M10.7 10.7a2.7 2.7 0 0 0 3.6 3.6" className="stroke-current" strokeWidth="1.7" strokeLinecap="round" />
       <path
         d="M6.1 6.6C3.8 8.4 2.5 12 2.5 12s3.5 7 9.5 7c1.8 0 3.4-.5 4.8-1.2"
         className="stroke-current"
@@ -125,6 +116,7 @@ type FormState = {
 
 function validate(form: FormState) {
   const e: Record<string, string> = {};
+
   if (!form.firstName.trim()) e.firstName = "First name is required.";
   if (!form.lastName.trim()) e.lastName = "Last name is required.";
 
@@ -165,6 +157,9 @@ export default function SignupForm() {
   const [apiErr, setApiErr] = useState<string | null>(null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
+  const [uploadingPic, setUploadingPic] = useState(false);
+  const [picErr, setPicErr] = useState<string | null>(null);
+
   const errors = useMemo(() => {
     if (!submitAttempted) return {};
     return validate(form);
@@ -182,9 +177,48 @@ export default function SignupForm() {
 
   const strengthLabel =
     strength <= 1 ? "Weak" : strength === 2 ? "Okay" : strength === 3 ? "Strong" : "Very strong";
+
   const strengthWidth = `${(strength / 4) * 100}%`;
 
-  const onChange = (k: keyof FormState, v: any) => setForm((s) => ({ ...s, [k]: v }));
+  const onChange = (k: keyof FormState, v: any) => {
+    setForm((s) => ({ ...s, [k]: v }));
+  };
+
+  async function uploadProfilePicture(file: File) {
+    setPicErr(null);
+
+    if (!file.type.startsWith("image/")) {
+      setPicErr("Please upload a valid image.");
+      return;
+    }
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setPicErr("Only JPG, PNG, or WEBP images are allowed.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setPicErr("Image must be 5MB or less.");
+      return;
+    }
+
+    setUploadingPic(true);
+
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+
+      const blob = await upload(`profile-pictures/${Date.now()}-${safeName}`, file, {
+        access: "public",
+        handleUploadUrl: "/api/profile-picture/upload",
+      });
+
+      onChange("pictureUrl", blob.url);
+    } catch {
+      setPicErr("Image upload failed. Please try again.");
+    } finally {
+      setUploadingPic(false);
+    }
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -195,12 +229,12 @@ export default function SignupForm() {
     if (Object.keys(nowErrors).length > 0) return;
 
     setBusy(true);
+
     try {
       const name = `${form.firstName} ${form.lastName}`.trim();
       const email = form.email.trim().toLowerCase();
       const phone = form.phone.trim();
 
-      // ✅ create account (backend should send verification email)
       await api.auth.signup({
         name,
         email,
@@ -209,7 +243,6 @@ export default function SignupForm() {
         pictureUrl: form.pictureUrl.trim() || null,
       } as any);
 
-      // ✅ go to "check your email" screen
       router.push(`/signup/check-email?email=${encodeURIComponent(email)}`);
     } catch (err: any) {
       if (err instanceof ApiError) setApiErr(err.message || "Signup failed.");
@@ -255,7 +288,7 @@ export default function SignupForm() {
               className={inputBase()}
               value={form.lastName}
               onChange={(e) => onChange("lastName", e.target.value)}
-              placeholder="wallace"
+              placeholder="Wallace"
               autoComplete="family-name"
             />
           </Field>
@@ -296,44 +329,48 @@ export default function SignupForm() {
         </div>
 
         <div className="rounded-3xl bg-slate-50 p-5 ring-1 ring-slate-200">
-          <Field label="Profile Picture" hint="Paste an image URL">
+          <Field label="Profile Picture" hint="Upload an image" error={picErr}>
             <div className="flex items-center gap-4">
               <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
                 {form.pictureUrl.trim() ? (
-                  <img
-                    src={form.pictureUrl.trim()}
-                    alt="Preview"
-                    className="h-full w-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                      (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden");
-                    }}
-                    onLoad={(e) => {
-                      (e.target as HTMLImageElement).style.display = "block";
-                      (e.target as HTMLImageElement).nextElementSibling?.classList.add("hidden");
-                    }}
-                  />
-                ) : null}
-                <div className={cn(
-                  "absolute inset-0 flex flex-col items-center justify-center text-slate-400",
-                  form.pictureUrl.trim() ? "hidden" : ""
-                )}>
-                  <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none">
-                    <circle cx="12" cy="8" r="4" className="stroke-current" strokeWidth="1.5" />
-                    <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" className="stroke-current" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </div>
+                  <img src={form.pictureUrl.trim()} alt="Preview" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
+                    <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none">
+                      <circle cx="12" cy="8" r="4" className="stroke-current" strokeWidth="1.5" />
+                      <path
+                        d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6"
+                        className="stroke-current"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </div>
+                )}
               </div>
-              <div className="flex-1 min-w-0">
+
+              <div className="min-w-0 flex-1">
                 <input
-                  className={inputBase()}
-                  value={form.pictureUrl}
-                  onChange={(e) => onChange("pictureUrl", e.target.value)}
-                  placeholder="https://example.com/photo.jpg"
-                  inputMode="url"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={uploadingPic}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadProfilePicture(file);
+                  }}
+                  className={cn(
+                    inputBase(),
+                    "cursor-pointer file:mr-4 file:rounded-xl file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100",
+                    uploadingPic && "opacity-70 cursor-not-allowed"
+                  )}
                 />
+
                 <div className="mt-1.5 text-xs text-slate-500">
-                  Use a publicly accessible image URL. This will be saved to your profile.
+                  {uploadingPic
+                    ? "Uploading image..."
+                    : form.pictureUrl
+                      ? "Image uploaded successfully."
+                      : "PNG, JPG, or WEBP. Max 5MB."}
                 </div>
               </div>
             </div>
@@ -435,7 +472,9 @@ export default function SignupForm() {
                 This helps us protect your account and patient information.
               </div>
 
-              {(errors as any).agree && <div className="mt-2 text-xs font-semibold text-rose-600">{(errors as any).agree}</div>}
+              {(errors as any).agree && (
+                <div className="mt-2 text-xs font-semibold text-rose-600">{(errors as any).agree}</div>
+              )}
             </div>
           </label>
 
@@ -457,14 +496,14 @@ export default function SignupForm() {
 
         <div className="pt-2">
           <button
-            disabled={busy}
+            disabled={busy || uploadingPic}
             type="submit"
             className={cn(
               "w-full rounded-2xl bg-blue-600 px-6 py-3.5 text-sm font-semibold text-white shadow-[0_18px_44px_rgba(37,99,235,.24)] transition hover:bg-blue-700 active:translate-y-[1px]",
-              busy && "opacity-70 cursor-not-allowed"
+              (busy || uploadingPic) && "opacity-70 cursor-not-allowed"
             )}
           >
-            {busy ? "Creating account…" : "Create account & verify email"}
+            {busy ? "Creating account…" : uploadingPic ? "Uploading image…" : "Create account & verify email"}
           </button>
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
